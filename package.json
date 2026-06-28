@@ -1,0 +1,18 @@
+{
+  "name": "pdf2obsidian-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:packages": "pnpm -r --filter \"./packages/**\" build",
+    "dev:cli": "pnpm build:packages && pnpm --filter @pdf2obsidian/cli dev",
+    "build:cli": "pnpm build:packages && pnpm --filter @pdf2obsidian/cli build",
+    "dev:oss": "pnpm build:packages && pnpm --filter @pdf2obsidian/desktop-web dev",
+    "build:oss": "pnpm build:packages && pnpm --filter @pdf2obsidian/desktop-web build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  },
+  "packageManager": "pnpm@10.0.0"
+}

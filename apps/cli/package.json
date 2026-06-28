@@ -1,0 +1,28 @@
+{
+  "name": "@pdf2obsidian/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pdf2obsidian": "./dist/cli/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli/main.ts",
+    "start": "node dist/cli/main.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@pdf2obsidian/core": "workspace:*",
+    "@pdf2obsidian/pipeline": "workspace:*",
+    "@pdf2obsidian/tasks": "workspace:*",
+    "commander": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  }
+}

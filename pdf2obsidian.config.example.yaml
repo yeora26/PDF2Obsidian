@@ -1,0 +1,178 @@
+# ─────────────────────────────────────────────
+# PDF2Obsidian 配置模板
+# 复制为 pdf2obsidian.config.yaml 后按需修改
+# ─────────────────────────────────────────────
+
+# Obsidian Vault 存放位置和目录约定
+vault:
+  # Vault 的绝对路径
+  path: /Users/your-name/Documents/Obsidian Vault
+  # 论文产物写入的子目录（相对于 Vault 根目录）
+  documentDir: Thesis
+  # 图片资源子目录名（相对于论文目录）
+  imageDirName: images
+
+# MinerU PDF 解析服务配置
+mineru:
+  # 本地 MinerU 命令路径（仅 mode 为 local 时生效）
+  command: ./.venv-mineru/bin/mineru
+  # MinerU 解析中间产物输出目录
+  outputDir: .pipeline/mineru
+  # 解析模式: "official"（MinerU 官方 API）| "local"（本地 HTTP 服务）
+  mode: official
+  # 解析后端: "pipeline"（常规流水线）| "vlm-http-client"（VLM 高精度）
+  backend: pipeline
+  # 本地或远程 MinerU 服务地址（仅 mode 为 local 时生效）
+  apiUrl: http://127.0.0.1:30000
+  # 解析方案: "auto"（自动选择）| "txt"（文字层提取）| "ocr"（强制 OCR）
+  method: txt
+  # MinerU 模型来源: "modelscope"（国内镜像）| 其他
+  modelSource: modelscope
+  # 官方 API 云端模型版本: "vlm"（高精度）| "pipeline"（常规）
+  modelVersion: vlm
+  # 官方 API Token 或环境变量名（仅 mode 为 official 时生效）
+  # 可以直接填 JWT 字符串，也可以填环境变量名如 MINERU_OFFICIAL_API_TOKEN
+  apiTokenEnv: MINERU_OFFICIAL_API_TOKEN
+  # 公式识别开关
+  formula: false
+  # 表格识别开关
+  table: false
+  # 图片分析开关（调用 VLM 分析图片内容）
+  imageAnalysis: false
+
+# AI 翻译配置
+translation:
+  # 是否启用正文翻译（设为 false 可跳过翻译步骤）
+  enabled: true
+  # 模型调用协议: "openai-compatible" | "ollama"
+  provider: openai-compatible
+  # OpenAI 兼容服务预设，用于标识具体服务和改善配置界面
+  preset: deepseek
+  # 模型名称，DeepSeek 推荐 deepseek-v4-flash，Ollama 推荐 qwen2.5:14b
+  model: deepseek-v4-flash
+  # API 地址，Ollama 通常是 http://127.0.0.1:11434
+  baseUrl: https://api.deepseek.com
+  # API Key（直接填写，优先级高于 apiKeyEnv）
+  # apiKey: sk-...
+  # API Key 的环境变量名（推荐方式，避免明文写入配置）
+  apiKeyEnv: DEEPSEEK_API_KEY
+  # 每个翻译分块的最大字符数
+  chunkCharLimit: 24000
+  # 翻译缓存目录（命中缓存可避免重复调用 LLM）
+  cacheDir: .pipeline/translation-cache
+  # 翻译失败时的最大重试次数
+  maxRetries: 3
+  # 自定义翻译提示词（按需修改，不填使用默认值）
+  systemPrompt: '你是专业技术文档译者。
+
+    任务：将 Markdown 从原语言翻译为简体中文。
+
+    要求：
+
+    1. 仅输出翻译后的 Markdown。
+
+    2. 保留 Markdown 标题层级、链接、图片路径、表格、代码块、LaTeX 公式。
+
+    3. 不翻译代码、变量名、文件路径、URL。
+
+    4. 不添加任何解释性内容。
+
+    5. 不遗漏原文信息，保持段落顺序。'
+
+# 任务管理配置
+tasks:
+  # 任务状态持久化目录
+  stateDir: .pipeline/tasks
+  # watch 模式的监听目录（新 PDF 放入即自动处理）
+  inboxDir: .pipeline/inbox
+  # 批量处理最大并发数
+  concurrency: 3
+  # watch 模式轮询间隔（毫秒）
+  watchPollIntervalMs: 5000
+
+# AI 阅读辅助材料配置
+readingAssets:
+  # 是否生成阅读材料（摘要、术语表、问答）
+  enabled: true
+  # 阅读材料缓存目录
+  cacheDir: .pipeline/reading-assets-cache
+  # 摘要文件名
+  summaryFileName: 摘要.md
+  # 术语表文件名
+  termsFileName: 术语表.md
+  # 问答文件名
+  qaFileName: 问答.md
+  # 输入原文最大字符数（超出则截取头尾部分）
+  maxSourceChars: 50000
+  # 生成失败时的最大重试次数
+  maxRetries: 3
+  # 自定义阅读材料提示词（按需修改，不填使用默认值）
+  systemPrompt: '你是严谨的论文阅读助手。
+
+    只根据用户提供的原文和译文生成内容，不要引入外部知识或没有依据的结论。
+
+    输出必须是简体中文 Markdown。
+
+    保留必要的英文术语、论文名、方法名和缩写。'
+
+# 质量检查配置
+quality:
+  # 质量报告文件名（写入论文目录）
+  reportFileName: report.json
+
+# Obsidian 导出和增强配置
+obsidian:
+  # 自动双链：扫描 Vault 已有笔记，为正文中的已知概念创建 [[WikiLink]]
+  autoLink:
+    enabled: true
+    # 额外扫描的目录（空数组表示扫描整个 Vault）
+    scanDirs: []
+    # 排除的目录
+    excludeDirs:
+    - .obsidian
+    - .trash
+    # 别名最小字符长度（低于此长度不创建链接）
+    minAliasLength: 4
+    # 单篇笔记最大自动链接数
+    maxLinksPerNote: 30
+  # Bases 数据库文件
+  database:
+    enabled: true
+    # 数据库文件名
+    fileName: 数据库.base
+
+# 元数据提取与补全配置
+metadata:
+  # 是否从 Markdown 正文启发式提取标题、作者、年份等信息
+  enrichFromMarkdown: true
+  # 在线元数据补全（通过 CrossRef 和 OpenAlex API）
+  online:
+    enabled: true
+    # 数据源列表
+    providers:
+    - crossref
+    - openalex
+    # API 请求超时（毫秒）
+    timeoutMs: 12000
+    # 在线查询缓存目录
+    cacheDir: .pipeline/metadata-cache
+    # CrossRef 请求需要联系邮箱（polite pool）
+    email: your-email@example.com
+  # 期刊指标（影响因子、分区等）
+  journalMetrics:
+    # 本地 SQLite 缓存
+    sqlite:
+      path: .pipeline/journal-metrics.sqlite
+    # EasyScholar API 集成
+    easyScholar:
+      enabled: true
+      baseUrl: https://www.easyscholar.cc/open/getPublicationRank
+      # API Key 的环境变量名
+      secretKeyEnv: EASYSCHOLAR_SECRET_KEY
+      timeoutMs: 12000
+  # 手动覆盖元数据（按论文 slug 或 PDF 文件名）
+  # 示例:
+  #   my-paper-slug:
+  #     title: "正确的论文标题"
+  #     year: 2024
+  overrides: {}

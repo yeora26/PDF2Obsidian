@@ -1,0 +1,26 @@
+{
+  "name": "@pdf2obsidian/desktop-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000"
+  },
+  "dependencies": {
+    "@pdf2obsidian/core": "workspace:*",
+    "@pdf2obsidian/pipeline": "workspace:*",
+    "@radix-ui/react-dialog": "^1.1.17",
+    "next": "15.4.11",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "19.2.16",
+    "@types/react-dom": "19.2.3",
+    "typescript": "^5.8.0"
+  }
+}

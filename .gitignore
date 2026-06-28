@@ -1,0 +1,18 @@
+node_modules
+dist
+.pipeline
+.DS_Store
+.next
+.idea
+*.db
+*.sqlite
+
+# 包含密钥/令牌的配置文件
+pdf2obsidian.config.yaml
+.env.local
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+
+output/*
