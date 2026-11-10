@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { OnboardingWizard, type OnboardingConfigResponse } from './OnboardingWizard';
 import { AlertIcon, FileTextIcon, LogoIcon, RefreshIcon, SettingsIcon, UploadIcon, WandIcon } from './shared/icons';
@@ -11,6 +11,13 @@ type ArtifactKind = 'original' | 'translated' | 'index' | 'database' | 'summary'
 type OutputViewKind = 'translated' | 'reading' | 'metadata' | 'database';
 type ReadingKind = 'summary' | 'terms' | 'qa';
 type TaskFilter = 'all' | 'active' | 'completed' | 'failed';
+type ToastTone = 'info' | 'success' | 'error';
+
+interface Toast {
+  id: number;
+  text: string;
+  tone: ToastTone;
+}
 
 type ConfigResponse = OnboardingConfigResponse;
 
@@ -98,8 +105,9 @@ export function LocalWorkspace() {
   const [activeView, setActiveView] = useState<OutputViewKind>('translated');
   const [readingKind, setReadingKind] = useState<ReadingKind>('summary');
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | undefined>();
-  const [actionMessage, setActionMessage] = useState<string | undefined>();
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const urlInputRef = useRef<HTMLInputElement>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [urlBusy, setUrlBusy] = useState(false);
@@ -117,6 +125,14 @@ export function LocalWorkspace() {
       return true;
     });
   }, [selectedTask?.result?.databaseNotePath, translationSkipped]);
+
+  const pushToast = useCallback((text: string, tone: ToastTone = 'info') => {
+    const id = Date.now() + Math.random();
+    setToasts((current) => [...current.slice(-2), { id, text, tone }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, tone === 'error' ? 6000 : 3200);
+  }, []);
 
   useEffect(() => {
     void refreshConfig();
@@ -172,19 +188,39 @@ export function LocalWorkspace() {
     });
   }
 
-  async function uploadPdf(formData: FormData) {
+  async function uploadPdfs(files: File[]) {
+    const pdfs = files.filter(isPdfFile);
+    if (pdfs.length === 0) {
+      pushToast('只支持 PDF 文件', 'error');
+      return;
+    }
+    if (!config?.valid) {
+      pushToast('请先完成配置，再导入论文', 'error');
+      return;
+    }
     setBusy(true);
-    setMessage(undefined);
+    let created = 0;
     try {
-      const response = await fetch('/api/tasks', { method: 'POST', body: formData });
-      const payload = await response.json() as { task?: LocalTask; error?: string };
-      if (!response.ok || !payload.task) {
-        setMessage(payload.error ?? '上传失败');
-        return;
+      for (const file of pdfs) {
+        const formData = new FormData();
+        formData.set('file', file);
+        const response = await fetch('/api/tasks', { method: 'POST', body: formData });
+        const payload = await response.json() as { task?: LocalTask; error?: string };
+        if (!response.ok || !payload.task) {
+          pushToast(`${file.name}：${payload.error ?? '上传失败'}`, 'error');
+          continue;
+        }
+        created += 1;
+        setSelectedTaskId(payload.task.id);
       }
-      setSelectedTaskId(payload.task.id);
       await refreshTasks();
-      setMessage('任务已创建');
+      if (created > 0) {
+        setTaskFilter('all');
+        pushToast(created === 1 ? '任务已创建，开始处理' : `已创建 ${created} 个任务`, 'success');
+      }
+      if (pdfs.length < files.length) {
+        pushToast(`已忽略 ${files.length - pdfs.length} 个非 PDF 文件`);
+      }
     } finally {
       setBusy(false);
     }
@@ -194,7 +230,6 @@ export function LocalWorkspace() {
     const url = urlInput.trim();
     if (!url) return;
     setUrlBusy(true);
-    setMessage(undefined);
     try {
       const response = await fetch('/api/tasks', {
         method: 'POST',
@@ -203,13 +238,14 @@ export function LocalWorkspace() {
       });
       const payload = await response.json() as { task?: LocalTask; error?: string };
       if (!response.ok || !payload.task) {
-        setMessage(payload.error ?? '导入失败');
+        pushToast(payload.error ?? '导入失败', 'error');
         return;
       }
       setUrlInput('');
       setSelectedTaskId(payload.task.id);
+      setTaskFilter('all');
       await refreshTasks();
-      setMessage('任务已创建');
+      pushToast('任务已创建，开始处理', 'success');
     } finally {
       setUrlBusy(false);
     }
@@ -240,20 +276,18 @@ export function LocalWorkspace() {
   async function deleteTask(task: LocalTask) {
     const confirmed = window.confirm('删除后会移除本地任务记录和上传的 PDF，不会删除已经写入 Vault 的笔记产物。确定删除吗？');
     if (!confirmed) return;
-    setActionMessage(undefined);
     const response = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
     const payload = await response.json() as { error?: string };
     if (!response.ok) {
-      setActionMessage(payload.error ?? '删除失败');
+      pushToast(payload.error ?? '删除失败', 'error');
       return;
     }
     setArtifact(undefined);
     await refreshTasks();
-    setActionMessage('任务已删除');
+    pushToast('任务已删除', 'success');
   }
 
   async function retryTask(task: LocalTask) {
-    setActionMessage(undefined);
     const response = await fetch(`/api/tasks/${task.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -261,17 +295,87 @@ export function LocalWorkspace() {
     });
     const payload = await response.json() as { task?: LocalTask; error?: string };
     if (!response.ok || !payload.task) {
-      setActionMessage(payload.error ?? '重试失败');
+      pushToast(payload.error ?? '重试失败', 'error');
       return;
     }
     setSelectedTaskId(payload.task.id);
     await refreshTasks();
-    setActionMessage('任务已重新开始');
+    pushToast('任务已重新开始', 'success');
   }
+
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes('Files');
+    function onDragEnter(event: DragEvent) {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      depth += 1;
+      setDragActive(true);
+    }
+    function onDragOver(event: DragEvent) {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    }
+    function onDragLeave(event: DragEvent) {
+      if (!hasFiles(event)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragActive(false);
+    }
+    function onDrop(event: DragEvent) {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      depth = 0;
+      setDragActive(false);
+      void uploadPdfs(Array.from(event.dataTransfer?.files ?? []));
+    }
+    window.addEventListener('dragenter', onDragEnter);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter);
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  });
+
+  const filteredTasks = tasks.filter((task) => matchesTaskFilter(task, taskFilter));
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (onboardingOpen || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const typing = target?.closest('input, textarea, select, [contenteditable="true"]');
+      if (typing) {
+        if (event.key === 'Escape') (target as HTMLElement).blur();
+        return;
+      }
+      if (event.key === '/') {
+        event.preventDefault();
+        urlInputRef.current?.focus();
+        return;
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (filteredTasks.length === 0) return;
+        event.preventDefault();
+        const index = filteredTasks.findIndex((task) => task.id === selectedTask?.id);
+        const next = event.key === 'ArrowDown'
+          ? Math.min(filteredTasks.length - 1, index + 1)
+          : Math.max(0, index < 0 ? 0 : index - 1);
+        const nextTask = filteredTasks[next];
+        if (!nextTask) return;
+        setSelectedTaskId(nextTask.id);
+        document.querySelector(`[data-task-id="${nextTask.id}"]`)?.scrollIntoView({ block: 'nearest' });
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
 
   const hasOutput = selectedTaskHasOutput;
   const taskSummary = getTaskSummary(tasks);
-  const filteredTasks = tasks.filter((task) => matchesTaskFilter(task, taskFilter));
   const configMissing = Boolean(config && !config.valid);
   const openOnboarding = () => {
     window.localStorage.removeItem('pdf2obsidian.onboarding.dismissed');
@@ -309,21 +413,21 @@ export function LocalWorkspace() {
           <label className="upload-card">
             <span className="upload-icon"><UploadIcon /></span>
             <div className="upload-text">
-              <strong>{busy ? '上传中...' : config?.valid ? '上传或拖入 PDF' : '先完成设置'}</strong>
-              <span>{message || (config?.valid ? '选择文件后立即进入处理队列' : '设置 Vault 与解析服务后即可上传')}</span>
+              <strong>{busy ? '上传中…' : config?.valid ? '上传或拖入 PDF' : '先完成设置'}</strong>
+              <span>{config?.valid ? '可多选，也可拖到窗口任意位置' : '设置 Vault 与解析服务后即可上传'}</span>
             </div>
             <input
               accept="application/pdf,.pdf"
               disabled={busy || !config?.valid}
+              multiple
               name="file"
               type="file"
               onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (!file) return;
-                const formData = new FormData();
-                formData.set('file', file);
-                void uploadPdf(formData).finally(() => {
-                  event.currentTarget.value = '';
+                const input = event.currentTarget;
+                const files = Array.from(input.files ?? []);
+                if (files.length === 0) return;
+                void uploadPdfs(files).finally(() => {
+                  input.value = '';
                 });
               }}
             />
@@ -331,11 +435,13 @@ export function LocalWorkspace() {
 
           <div className="url-divider">
             <span>或从链接导入</span>
+            <kbd title="按 / 聚焦链接输入框">/</kbd>
           </div>
 
           <div className="url-import">
             <input
               className="url-input"
+              ref={urlInputRef}
               disabled={urlBusy || !config?.valid}
               placeholder="arXiv ID、DOI 或 PDF 链接"
               type="text"
@@ -377,7 +483,6 @@ export function LocalWorkspace() {
             </button>
           ))}
         </div>
-        {actionMessage ? <p className="rail-message">{actionMessage}</p> : null}
 
         <div className="task-list">
           {tasks.length === 0 ? <p className="empty">还没有任务，导入一篇论文开始吧</p> : null}
@@ -387,6 +492,7 @@ export function LocalWorkspace() {
               className="task-item"
               data-active={selectedTask?.id === task.id ? 'true' : 'false'}
               data-status={task.status}
+              data-task-id={task.id}
               key={task.id}
             >
               <button
@@ -494,6 +600,20 @@ export function LocalWorkspace() {
           />
         </section>
       ) : null}
+      {dragActive ? (
+        <div className="drop-overlay" aria-hidden="true">
+          <div>
+            <span className="empty-icon"><UploadIcon /></span>
+            <strong>{config?.valid ? '松开即可导入 PDF' : '请先完成配置'}</strong>
+            <span>{config?.valid ? '支持一次拖入多个文件' : '配置完成后才能导入论文'}</span>
+          </div>
+        </div>
+      ) : null}
+      <div className="toast-stack" aria-live="polite" role="status">
+        {toasts.map((toast) => (
+          <div className="toast" data-tone={toast.tone} key={toast.id}>{toast.text}</div>
+        ))}
+      </div>
       <OnboardingWizard
         config={config}
         open={onboardingOpen}
@@ -898,6 +1018,10 @@ function getTaskSummary(tasks: LocalTask[]): Record<TaskFilter, number> {
     completed: tasks.filter((task) => task.status === 'completed').length,
     failed: tasks.filter((task) => task.status === 'failed').length
   };
+}
+
+function isPdfFile(file: File): boolean {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 }
 
 function matchesTaskFilter(task: LocalTask, filter: TaskFilter): boolean {

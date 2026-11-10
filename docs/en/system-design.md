@@ -163,11 +163,11 @@ Between `translate` and `obsidian_export`, enrichment steps that are not named s
 
 | Path | Component | Content |
 | --- | --- | --- |
-| `/` | `LocalWorkspace` | Left: upload PDF, import by link (arXiv / DOI / URL), task list (filtered by all / running / done / failed, each item shows per-stage status), delete and retry. Middle: original PDF preview, or a setup guide when the config is invalid. Right: translation, reading assets (summary / glossary / Q&A), paper info, Bases |
+| `/` | `LocalWorkspace` | Left: upload PDF (multiple files, or drop anywhere on the window), import by link (arXiv / DOI / URL), task list (filtered by all / running / done / failed, each item shows per-stage status), delete and retry. Middle: original PDF preview, or a setup guide when the config is invalid. Right: translation, reading assets (summary / glossary / Q&A), paper info, Bases |
 | `/` dialog | `OnboardingWizard` | First-run wizard: location → parsing → AI → output. Opens automatically when config is missing or invalid and the user has not completed or dismissed it (kept in browser `localStorage`) |
 | `/settings` | `SettingsWorkspace` | Advanced settings: form for the whole config |
 
-The task list polls `/api/tasks` every 1.8 s.
+The task list polls `/api/tasks` every 1.8 s. Shortcuts: `/` focuses the link input, `↑` / `↓` move between tasks in the current filter, `Esc` leaves an input. Action results show as toasts at the bottom of the page.
 
 ### 6.2 Local task queue
 
