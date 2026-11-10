@@ -50,7 +50,7 @@ Builds: `pnpm build:packages` (shared packages), `pnpm build:cli`, `pnpm build:o
 
 ## 3. Configuration
 
-The config file is `pdf2obsidian.config.yaml`. "Default" below is the code default (`packages/core/src/config/load-config.ts`, used when the key is omitted); a few template values differ, see [system design §9](system-design.md#9-known-issues-and-doccode-differences). The template comments are the full reference for each key.
+The config file is `pdf2obsidian.config.yaml`. "Default" below is the code default (`packages/core/src/config/load-config.ts`, used when the key is omitted); the template uses the same values. Relative paths in config resolve against the config file's directory. The template comments are the full reference for each key.
 
 ### 3.1 `vault`
 
@@ -160,24 +160,25 @@ Cloudflare Workers AI `baseUrl` looks like `https://api.cloudflare.com/client/v4
 2. **Import**: drop or choose a PDF, or enter an arXiv id, DOI or PDF URL under 从链接导入 (import from link). Each task starts immediately.
 3. **Progress**: the task list on the left shows status and stages; failed tasks show a Chinese reason and suggestions.
 4. **Results**: the original PDF is previewed in the middle; switch between translation, reading assets, paper info and Bases on the right.
-5. **Retry and delete**: failed tasks can be retried, skipping completed stages; delete removes only the task record and uploaded PDF, not the notes in the Vault.
+5. **Review**: tasks with quality warnings show 需复核 (needs review) and the warning count; the reasons are in `report.json` in the paper folder.
+6. **Retry and delete**: failed tasks can be retried, skipping completed stages; tasks that had not finished before the web app restarted are marked failed and can be retried too. Delete removes only the task record and uploaded PDF, not the notes in the Vault.
 
 Web and CLI task records are independent.
 
 ## 5. CLI
 
-`pnpm dev:cli` builds the shared packages and then runs inside `apps/cli`, so use absolute paths for PDFs and `--config` (see [system design §9](system-design.md#9-known-issues-and-doccode-differences)).
+`pnpm dev:cli` builds the shared packages and then runs. Relative PDF paths, `--config` and the inbox dir resolve against the directory where you run the command.
 
 ```bash
-pnpm dev:cli import /abs/path/paper.pdf --config /abs/path/pdf2obsidian.config.yaml
+pnpm dev:cli import paper.pdf --config ./pdf2obsidian.config.yaml
 ```
 
 | Command | Meaning |
 | --- | --- |
-| `import <source>` | Import one paper: local path or PDF URL (for bare arXiv ids and DOIs see [system design §9](system-design.md#9-known-issues-and-doccode-differences)); prints the result JSON; creates no task record |
+| `import <source>` | Import one paper: local path, arXiv id (e.g. `2401.12345`), DOI or PDF URL; prints the result JSON; creates no task record |
 | `batch <pdf...> [-j N]` | Batch import; the same PDF reuses an existing non-failed task |
 | `watch [inboxDir]` | Keep watching a dir (including sub-dirs) and import new PDFs |
-| `tasks list` | List tasks: `taskId  status  file name -> slug (error)` |
+| `tasks list` | List tasks: `taskId  status  file name -> slug [needs review] (error)` |
 | `tasks show <taskId>` | Print a task's full state as JSON |
 | `tasks retry <taskId>` | Retry a failed task, skipping completed stages |
 
@@ -199,7 +200,7 @@ A successful import writes `<vault>/<documentDir>/<slug>/`:
 
 `<documentDir>/` also gets reference stub notes (created when no note with the same title exists in the Vault) and `数据库.base`.
 
-**Note:** re-importing a paper (or another paper with the same first heading) wipes its paper folder before writing; don't keep hand-written notes inside paper folders.
+**Note:** re-importing a paper wipes its paper folder before writing; don't keep hand-written notes inside paper folders. A different paper with the same first heading goes to a new folder with a hash suffix (e.g. `<slug>-1a2b3c4d/`) instead of overwriting.
 
 ## 7. Data and cache directories
 
@@ -215,13 +216,13 @@ A successful import writes `<vault>/<documentDir>/<slug>/`:
 | CLI downloads | `.pipeline/downloads` | PDFs imported by link |
 | Web data | `.pipeline/desktop-web/` | `uploads/`, `downloads/`, `tasks/tasks.json` |
 
-All are in `.gitignore`. Deleting a cache dir means the next import calls MinerU or the AI service again.
+All defaults above are relative to the config file's directory. All are in `.gitignore`. Deleting a cache dir means the next import calls MinerU or the AI service again.
 
 ## 8. Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
-| Config file not found | Is there a `pdf2obsidian.config.yaml` in the current dir, or pass an absolute path with `--config` / `PDF2OBSIDIAN_CONFIG` |
+| Config file not found | Is there a `pdf2obsidian.config.yaml` in the dir where you ran the command, or pass a path with `--config` / `PDF2OBSIDIAN_CONFIG` |
 | "配置预检失败" (pre-flight check failed) | Fix as prompted; does `baseUrl` still contain a placeholder or end in `/chat/completions`; was the key env var set before starting the web app |
 | AI service 401 / 403 | Is the key valid and allowed to use the model; does `apiKeyEnv` hold a variable name rather than the key itself |
 | AI service 404 | Is `baseUrl` the service root; is the model name available on that service; is the Cloudflare Account ID filled in |

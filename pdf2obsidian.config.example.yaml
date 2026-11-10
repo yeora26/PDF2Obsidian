@@ -1,6 +1,7 @@
 # ─────────────────────────────────────────────
 # PDF2Obsidian 配置模板
 # 复制为 pdf2obsidian.config.yaml 后按需修改
+# 配置中的相对路径（.pipeline/... 等）按本配置文件所在目录解析
 # ─────────────────────────────────────────────
 
 # Obsidian Vault 存放位置和目录约定
@@ -14,11 +15,11 @@ vault:
 
 # MinerU PDF 解析服务配置
 mineru:
-  # 本地 MinerU 命令路径（仅 mode 为 local 时生效）
+  # 本地 MinerU 命令路径（mode 为 cli，或 local 未配置 apiUrl 时使用）
   command: ./.venv-mineru/bin/mineru
   # MinerU 解析中间产物输出目录
   outputDir: .pipeline/mineru
-  # 解析模式: "official"（MinerU 官方 API）| "local"（本地 HTTP 服务）
+  # 解析模式: "official"（MinerU 官方 API）| "local"（连接 apiUrl 上的 MinerU HTTP 服务）| "cli"（直接运行本地 command）
   mode: official
   # 解析后端: "pipeline"（常规流水线）| "vlm-http-client"（VLM 高精度）
   backend: pipeline
@@ -59,7 +60,7 @@ translation:
   # 每个翻译分块的最大字符数
   chunkCharLimit: 24000
   # 翻译缓存目录（命中缓存可避免重复调用 LLM）
-  cacheDir: .pipeline/translation-cache
+  cacheDir: .pipeline/core-cache
   # 翻译失败时的最大重试次数
   maxRetries: 3
   # 自定义翻译提示词（按需修改，不填使用默认值）
@@ -95,7 +96,7 @@ readingAssets:
   # 是否生成阅读材料（摘要、术语表、问答）
   enabled: true
   # 阅读材料缓存目录
-  cacheDir: .pipeline/reading-assets-cache
+  cacheDir: .pipeline/core-assets-cache
   # 摘要文件名
   summaryFileName: 摘要.md
   # 术语表文件名
@@ -147,7 +148,8 @@ metadata:
   enrichFromMarkdown: true
   # 在线元数据补全（通过 CrossRef 和 OpenAlex API）
   online:
-    enabled: true
+    # 默认关闭：开启后会把论文 DOI / 标题发送给 CrossRef、OpenAlex
+    enabled: false
     # 数据源列表
     providers:
     - crossref
@@ -155,7 +157,7 @@ metadata:
     # API 请求超时（毫秒）
     timeoutMs: 12000
     # 在线查询缓存目录
-    cacheDir: .pipeline/metadata-cache
+    cacheDir: .pipeline/core-cache
     # CrossRef 请求需要联系邮箱（polite pool）
     email: your-email@example.com
   # 期刊指标（影响因子、分区等）
@@ -165,7 +167,8 @@ metadata:
       path: .pipeline/journal-metrics.sqlite
     # EasyScholar API 集成
     easyScholar:
-      enabled: true
+      # 默认关闭：需要 EasyScholar SecretKey，开启后会发送期刊名
+      enabled: false
       baseUrl: https://www.easyscholar.cc/open/getPublicationRank
       # API Key 的环境变量名
       secretKeyEnv: EASYSCHOLAR_SECRET_KEY

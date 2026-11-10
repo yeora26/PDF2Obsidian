@@ -24,13 +24,12 @@ flowchart TD
 
 ## 1. 来源解析
 
-`resolvePdfSource(input, outputDir)` 判断输入类型：
+`resolvePdfSource(input, outputDir, baseDir?)` 判断输入类型：
 
 - 以 `http(s)://` 开头、形如 `arXiv:2401.12345` / `2401.12345`、或以 `10.xxxx/` 开头的视为远程来源，下载到 `outputDir`；其余按本地文件处理。
 - arXiv ID 下载 `arxiv.org` 的 PDF；DOI 经 `doi.org` 解析；URL 直接下载。
-- 命令行下载到 `.pipeline/downloads/`，Web 下载到 `.pipeline/desktop-web/downloads/` 后移入上传目录。
-
-已知问题：命令行 `import` 先对输入做 `resolve()`，裸 arXiv ID 与 DOI 会变成本地绝对路径而无法识别（[系统设计 §9](../system-design.md#9-已知问题与文档代码差异) 第 2 条）。
+- 本地相对路径按调用方给的 `baseDir` 解析（命令行传执行目录）。调用方须传原始输入，先判断类型再解析路径。
+- 命令行下载到配置文件旁的 `.pipeline/downloads/`，Web 下载到 `.pipeline/desktop-web/downloads/` 后移入上传目录。
 
 ## 2. upload
 
@@ -50,13 +49,13 @@ flowchart TD
 ## 4. normalize
 
 1. `findPrimaryMarkdown` 在解析目录中找到主 Markdown（优先名为 `document` 的文件）。
-2. 取首个标题作为原文标题（没有则用文件名），`toSlug` 生成 `slug`。
+2. 取首个标题作为原文标题（没有则用文件名），`toSlug` 生成基础 slug。`resolveUniqueSlug` 读取 `<documentDir>/<基础 slug>/<基础 slug>.index.md` 的 `sourceHash`：目录不存在、没有索引页或哈希相同时用基础 slug；属于另一篇论文时用 `<基础 slug>-<哈希前 8 位>`。
 3. 论文目录 `documentRoot` = `<vault.path>/<vault.documentDir>/<slug>/`。**先整体删除该目录**，再新建，并把 MinerU 的 `images/` 复制为 `<documentRoot>/<imageDirName>/`。
 4. `rewriteMarkdownAssetLinks` 把 Markdown 中的图片链接改为 Vault 内路径。
 
 续跑时跳过删除与复制，但仍会重新读取主 Markdown、计算 slug（后续步骤需要）。
 
-风险：不同论文首个标题相同（或都没有标题且文件名相同）时 slug 相同，后导入的会清空前一篇的论文目录；论文目录内的手写笔记也会在重新导入时被删除。
+风险：重新导入同一篇论文会删除论文目录内用户自己添加的文件。
 
 ## 5. translate
 
@@ -82,7 +81,7 @@ flowchart TD
 | 元数据 | 正文抽取 → CrossRef / OpenAlex 依次补空缺（单个来源失败只记警告；标题相似度过低视为误命中并缓存空结果）→ 本地期刊指标库 → EasyScholar → 按 slug 或 PDF 文件名应用 `overrides` | `metadata.*` |
 | 阅读材料 | 原文与译文各取 `maxSourceChars` 的一半（超出取头尾），用阅读材料提示词分别生成摘要、术语表、问答；补 frontmatter 与指回索引页的链接，直接写入论文目录 | `readingAssets.*` |
 
-阅读材料缓存键 = sha256(AI 服务四项、`readingAssets.systemPrompt`、`sourceHash`、材料类型、材料提示词)。内容缺少索引链接占位符等质量问题只记警告；但模型调用在重试用尽后会抛错，使整个导入失败，且失败被记在 `translate` 阶段（[系统设计 §9](../system-design.md#9-已知问题与文档代码差异) 第 11 条）。
+阅读材料缓存键 = sha256(AI 服务四项、`readingAssets.systemPrompt`、`sourceHash`、材料类型、材料提示词)。内容缺少索引链接占位符等质量问题记为警告；某份材料的模型调用重试用尽仍失败时，跳过该份（不写文件、索引页不放链接），失败原因作为警告写入质量报告，导入继续。
 
 ## 7. obsidian_export
 
@@ -95,7 +94,7 @@ flowchart TD
 
 ## 8. quality_check 与收尾
 
-1. `createQualityReport` 比较原文与译文的标题数、图片数，检查图片文件是否存在、frontmatter 是否有效，汇总元数据与阅读材料警告，写 `<documentRoot>/<quality.reportFileName>`。有警告时 `status: needs_review`。
+1. `createQualityReport` 比较原文与译文的标题数、图片数，检查图片文件是否存在、frontmatter 是否有效，汇总元数据与阅读材料警告，写 `<documentRoot>/<quality.reportFileName>`。有警告时 `status: needs_review`，结论与警告数写入返回结果的 `qualityStatus` / `qualityWarningCount`（续跑跳过本阶段时从已有报告读取）。
 2. 所有阶段结束后（不受续跑影响）`exportObsidianDatabase` 重写 `<documentDir>/<database.fileName>`，筛选 `type == "index"` 且位于 `documentDir` 的笔记，列出名称、标题、作者、年份、期刊、引用数、影响因子、JCR、中科院分区、DOI、APA 与 BibTeX 引用。
 3. 在解析目录写 `import-result.json`（`sourceHash`、`slug`、`databaseNotePath`），返回 `ImportPdfResult`。
 

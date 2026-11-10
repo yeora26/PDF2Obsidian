@@ -24,13 +24,12 @@ flowchart TD
 
 ## 1. Source resolution
 
-`resolvePdfSource(input, outputDir)` decides the input type:
+`resolvePdfSource(input, outputDir, baseDir?)` decides the input type:
 
 - Input starting with `http(s)://`, shaped like `arXiv:2401.12345` / `2401.12345`, or starting with `10.xxxx/` is remote and downloaded to `outputDir`; anything else is a local file.
 - arXiv ids download from `arxiv.org`; DOIs resolve through `doi.org`; URLs are downloaded directly.
-- The CLI downloads to `.pipeline/downloads/`; the web downloads to `.pipeline/desktop-web/downloads/` and moves the file into the upload dir.
-
-Known issue: CLI `import` calls `resolve()` on the input first, so bare arXiv ids and DOIs become absolute local paths and are not recognised ([system design §9](../system-design.md#9-known-issues-and-doccode-differences), item 2).
+- Local relative paths resolve against the caller's `baseDir` (the CLI passes the invocation dir). Callers must pass the raw input so the type is detected before any path resolution.
+- The CLI downloads to `.pipeline/downloads/` next to the config file; the web downloads to `.pipeline/desktop-web/downloads/` and moves the file into the upload dir.
 
 ## 2. upload
 
@@ -50,13 +49,13 @@ Cache: the parse dir itself. On resume, a completed `mineru` stage is not re-run
 ## 4. normalize
 
 1. `findPrimaryMarkdown` finds the primary Markdown in the parse dir (preferring a file named `document`).
-2. The first heading is the original title (else the file name); `toSlug` derives `slug`.
+2. The first heading is the original title (else the file name); `toSlug` derives the base slug. `resolveUniqueSlug` reads `sourceHash` from `<documentDir>/<base slug>/<base slug>.index.md`: if the folder or index note is missing or the hash matches, the base slug is used; if it belongs to another paper, `<base slug>-<first 8 hash chars>` is used.
 3. Paper folder `documentRoot` = `<vault.path>/<vault.documentDir>/<slug>/`. **The folder is deleted first**, recreated, and MinerU's `images/` is copied to `<documentRoot>/<imageDirName>/`.
 4. `rewriteMarkdownAssetLinks` rewrites image links to Vault paths.
 
 On resume, deletion and copying are skipped, but the primary Markdown is read and the slug recomputed (later steps need them).
 
-Risk: papers with the same first heading (or no heading and the same file name) get the same slug, and the later import wipes the earlier paper folder; hand-written notes inside a paper folder are also deleted on re-import.
+Risk: re-importing the same paper deletes files the user added inside its paper folder.
 
 ## 5. translate
 
@@ -82,7 +81,7 @@ These are not named stages and run on every run, including resumes:
 | Metadata | Text extraction → CrossRef / OpenAlex fill empty fields in turn (a failing source only adds a warning; low title similarity counts as a false hit and an empty result is cached) → local journal-metrics DB → EasyScholar → apply `overrides` by slug or PDF file name | `metadata.*` |
 | Reading assets | Take half of `maxSourceChars` from the original and half from the translation (head and tail when longer), generate summary, glossary and Q&A with the reading-asset prompt; add frontmatter and a link back to the index note; write straight into the paper folder | `readingAssets.*` |
 
-Reading-asset cache key = sha256(the four AI-service fields, `readingAssets.systemPrompt`, `sourceHash`, asset kind, asset prompt). Content problems such as a missing index-link placeholder are only warnings, but a model call that still fails after retries throws and fails the whole import, recorded under the `translate` stage ([system design §9](../system-design.md#9-known-issues-and-doccode-differences), item 11).
+Reading-asset cache key = sha256(the four AI-service fields, `readingAssets.systemPrompt`, `sourceHash`, asset kind, asset prompt). Content problems such as a missing index-link placeholder are warnings; if an asset's model call still fails after retries, that asset is skipped (no file, no link in the index note), the reason goes into the quality report as a warning, and the import continues.
 
 ## 7. obsidian_export
 
@@ -95,7 +94,7 @@ Reading-asset cache key = sha256(the four AI-service fields, `readingAssets.syst
 
 ## 8. quality_check and wrap-up
 
-1. `createQualityReport` compares heading and image counts between original and translation, checks that image files exist and frontmatter is valid, collects metadata and reading-asset warnings, and writes `<documentRoot>/<quality.reportFileName>`. Any warning gives `status: needs_review`.
+1. `createQualityReport` compares heading and image counts between original and translation, checks that image files exist and frontmatter is valid, collects metadata and reading-asset warnings, and writes `<documentRoot>/<quality.reportFileName>`. Any warning gives `status: needs_review`; the status and warning count go into the result as `qualityStatus` / `qualityWarningCount` (read from the existing report when the stage is skipped on resume).
 2. After all stages (regardless of resume), `exportObsidianDatabase` rewrites `<documentDir>/<database.fileName>`, filtering notes with `type == "index"` inside `documentDir` and listing name, title, authors, year, journal, citations, impact factor, JCR, CAS quartile, DOI, APA and BibTeX citations.
 3. `import-result.json` (`sourceHash`, `slug`, `databaseNotePath`) is written to the parse dir and `ImportPdfResult` is returned.
 

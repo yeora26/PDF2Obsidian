@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import YAML from 'yaml';
 import { z } from 'zod';
 import type { AppConfig } from './types.js';
@@ -245,7 +246,42 @@ const configSchema = z.object({
 export async function loadConfig(configPath: string): Promise<AppConfig> {
   // AppConfig 是 CLI 和本地 Web 共同依赖的配置边界。
   // 在这里统一做默认值补全和结构校验，避免下游 pipeline 重复兜底。
-  const raw = await readFile(configPath, 'utf8');
+  const absoluteConfigPath = resolve(configPath);
+  const raw = await readFile(absoluteConfigPath, 'utf8');
   const parsed = YAML.parse(raw);
-  return configSchema.parse(parsed);
+  return resolveConfigPaths(configSchema.parse(parsed), dirname(absoluteConfigPath));
+}
+
+/**
+ * 配置中的相对路径统一按配置文件所在目录解析，
+ * 避免 pnpm --filter 等方式改变进程工作目录后，缓存和任务目录落到子包目录里。
+ */
+function resolveConfigPaths(config: AppConfig, baseDir: string): AppConfig {
+  const toAbsolute = (value: string): string => (isAbsolute(value) ? value : resolve(baseDir, value));
+
+  return {
+    ...config,
+    vault: { ...config.vault, path: toAbsolute(config.vault.path) },
+    mineru: {
+      ...config.mineru,
+      // 只有写成路径的命令才解析（如 ./.venv-mineru/bin/mineru）；裸命令名继续走 PATH 查找。
+      command: /[\\/]/.test(config.mineru.command) ? toAbsolute(config.mineru.command) : config.mineru.command,
+      outputDir: toAbsolute(config.mineru.outputDir)
+    },
+    translation: { ...config.translation, cacheDir: toAbsolute(config.translation.cacheDir) },
+    tasks: {
+      ...config.tasks,
+      stateDir: toAbsolute(config.tasks.stateDir),
+      inboxDir: toAbsolute(config.tasks.inboxDir)
+    },
+    readingAssets: { ...config.readingAssets, cacheDir: toAbsolute(config.readingAssets.cacheDir) },
+    metadata: {
+      ...config.metadata,
+      online: { ...config.metadata.online, cacheDir: toAbsolute(config.metadata.online.cacheDir) },
+      journalMetrics: {
+        ...config.metadata.journalMetrics,
+        sqlite: { path: toAbsolute(config.metadata.journalMetrics.sqlite.path) }
+      }
+    }
+  };
 }

@@ -77,7 +77,7 @@ Dependencies go one way: `providers` ← `core` ← `pipeline` ← `tasks` ← a
 ### 3.1 Sources and loading
 
 - A single config file `pdf2obsidian.config.yaml` (not committed); template `pdf2obsidian.config.example.yaml`.
-- CLI: `--config`, default `pdf2obsidian.config.yaml` in the current working directory.
+- CLI: `--config`, default `pdf2obsidian.config.yaml` in the directory where the command was run. Relative paths in CLI arguments (config, PDFs, inbox) resolve against that directory: `INIT_CWD` set by pnpm / npm first (`pnpm dev:cli` actually runs inside `apps/cli`), else the process cwd.
 - Web: env var `PDF2OBSIDIAN_CONFIG` first, else `pdf2obsidian.config.yaml` in the workspace root (found by walking up to `pnpm-workspace.yaml`); when the file is missing the template is used as a form draft.
 - Top-level sections: `vault`, `mineru`, `translation`, `tasks`, `readingAssets`, `quality`, `obsidian`, `metadata`. Common keys: [user guide §3](user-guide.md#3-configuration).
 
@@ -87,6 +87,7 @@ Dependencies go one way: `providers` ← `core` ← `pipeline` ← `tasks` ← a
 
 - `vault.documentDir` loses drive letters, UNC prefixes and leading/trailing slashes so it is a path inside the Vault; empty becomes `Thesis`.
 - `mineru.apiUrl` without a scheme gets `https://`.
+- Relative paths in config (`vault.path`, `mineru.outputDir`, every `cacheDir`, `tasks.stateDir` / `inboxDir`, `journalMetrics.sqlite.path`, and `mineru.command` when written as a path) are made absolute relative to the **config file's directory**; a bare command name (e.g. `mineru`) is left alone and looked up on `PATH`.
 - With `translation.enabled` true and `provider` not `ollama`, `apiKeyEnv` or `apiKey` is required.
 
 ### 3.3 Migration
@@ -108,7 +109,7 @@ The legacy `translation.provider: deepseek` is turned into `provider: openai-com
 | --- | --- |
 | `upload` | Check the path is a file, compute SHA-256 (`sourceHash`) |
 | `mineru` | Copy the PDF to `<mineru.outputDir>/<runId>/document.pdf`, call MinerU, delete the copy |
-| `normalize` | Find the primary Markdown, derive `slug` from its first heading, wipe and rebuild `<vault>/<documentDir>/<slug>/`, copy images |
+| `normalize` | Find the primary Markdown, derive `slug` from its first heading (with a hash suffix if that folder belongs to another paper), wipe and rebuild `<vault>/<documentDir>/<slug>/`, copy images |
 | `translate` | Detect language; skip for Chinese or when disabled, otherwise translate in chunks |
 | `obsidian_export` | Write `*.original.md`, `*.zh.md`, `*.index.md`, copy the PDF, extract references and create stub notes |
 | `quality_check` | Write `report.json` |
@@ -134,7 +135,7 @@ Between `translate` and `obsidian_export`, enrichment steps that are not named s
 
 ### 4.4 Quality report
 
-`report.json` has `status` `completed` or `needs_review`. Warnings come from heading or image count mismatches, missing image files, missing or invalid frontmatter, and metadata / reading-asset warnings. `metrics` records chunk count, cache hits, auto-link count, metadata field count and sources, etc. The status is only in the report; it does not affect task status.
+`report.json` has `status` `completed` or `needs_review`. Warnings come from heading or image count mismatches, missing image files, missing or invalid frontmatter, and metadata / reading-asset warnings (including failed reading assets). `metrics` records chunk count, cache hits, auto-link count, metadata field count and sources, etc. The result goes into `ImportPdfResult.qualityStatus` / `qualityWarningCount`: task status stays `completed`, and the CLI task line and the web task list additionally show 需复核 (needs review) with the warning count.
 
 ## 5. Task management (packages/tasks, CLI)
 
@@ -172,7 +173,8 @@ The task list polls `/api/tasks` every 1.8 s.
 
 `lib/local-tasks.ts` has its own task queue, separate from the CLI:
 
-- Tasks live in an in-process `Map`, written to `.pipeline/desktop-web/tasks/tasks.json` (under the workspace root) on every change.
+- Tasks live in an in-process `Map` (kept on `globalThis` so all Next.js routes share one), written to `.pipeline/desktop-web/tasks/tasks.json` (under the workspace root) on every change.
+- On the first read of the task index after the process starts, `queued` / `running` tasks left over from the previous run are marked `failed` (saying they did not finish before the restart) and can be retried to resume.
 - Uploads are saved as `.pipeline/desktop-web/uploads/<taskId>-<file name>`; link imports download to `.pipeline/desktop-web/downloads/` and are moved into the upload dir.
 - A task starts as soon as it is created; there is no concurrency limit and no reuse by hash.
 - Progress is estimated per stage (at most 96 %, 100 % on completion); at most 240 log lines are kept.
@@ -213,7 +215,7 @@ The web API is for the local page only. All routes run in the Node.js runtime an
 | `.pipeline/downloads/` | CLI link-import downloads | cli |
 | `.pipeline/desktop-web/` | Web uploads, downloads, task index `tasks/tasks.json`, config temp files | desktop-web |
 
-Defaults are in [user guide §7](user-guide.md#7-data-and-cache-directories); relative paths resolve against the process cwd (see §9).
+Defaults are in [user guide §7](user-guide.md#7-data-and-cache-directories); relative paths resolve against the config file's directory (§3.2).
 
 ### 8.2 Vault output
 
@@ -239,22 +241,16 @@ All three notes carry YAML frontmatter: `title`, paper metadata (`authors`, `yea
 
 **Web `LocalTask`** (element of the `tasks.json` array): `id`, `fileName`, `pdfPath`, `status` (`queued | running | completed | failed`), `progress` (0–100), time fields, `error`, `result`, `steps` (`[{ step, status, message, updatedAt }]`), `logs`.
 
-**`ImportPdfResult`**: `sourceHash`, `slug`, `originalNotePath`, `translatedNotePath`, `indexNotePath`, `databaseNotePath?`, `configSummary` (MinerU mode and backend, translation on/skipped, provider and model, reading assets on).
+**`ImportPdfResult`**: `sourceHash`, `slug`, `originalNotePath`, `translatedNotePath`, `indexNotePath`, `databaseNotePath?`, `qualityStatus?` (`completed | needs_review`), `qualityWarningCount?`, `configSummary` (MinerU mode and backend, translation on/skipped, provider and model, reading assets on).
 
 ## 9. Known issues and doc/code differences
 
-Differences found while checking the code for this document, recorded as they are; rewrite the entry when fixed.
+Limitations and differences found while checking the code that are still in place; rewrite or remove the entry when fixed.
 
 | # | Observation | Code |
 | --- | --- | --- |
-| 1 | `pnpm dev:cli` and `pnpm dev:oss` run via `pnpm --filter` inside `apps/cli` and `apps/desktop-web`. The CLI's default `--config`, relative PDF paths, and relative dirs in config (`.pipeline/...`) for both apps resolve against that sub-directory, while the web's uploads and task index are in the workspace-root `.pipeline/`. The README's `pnpm dev:cli import paper.pdf` is only reliable with absolute paths | `apps/cli/src/cli/main.ts`, `apps/desktop-web/lib/paths.ts` |
-| 2 | CLI `import` calls `resolve()` on the input before detecting its type, so bare arXiv ids (e.g. `2401.12345`) and DOIs become local paths; `https://` URLs are fine | `apps/cli/src/cli/main.ts` |
-| 3 | The README says the task index is in `.pipeline/tasks`; the web actually writes `.pipeline/desktop-web/tasks/tasks.json`, and `.pipeline/tasks` is only the default CLI `tasks.stateDir`. The two task lists don't see each other | `lib/local-tasks.ts`, `packages/tasks` |
-| 4 | Cache dir defaults: code uses `.pipeline/core-cache` (translation, online metadata) and `.pipeline/core-assets-cache` (reading assets); the template and README use `translation-cache`, `metadata-cache`, `reading-assets-cache` | `load-config.ts`, `pdf2obsidian.config.example.yaml` |
-| 5 | `metadata.online.enabled` and `easyScholar.enabled` default to `false` in code but are `true` in the template | same |
-| 6 | The README says `*.original.md` is "only generated when the original needs to be kept"; the pipeline currently always writes it | `import-pdf.ts`, `export-notes.ts` |
-| 7 | The README describes `mode: local` as "connect to a local service"; code also has a `cli` mode, and `local` without `apiUrl` goes to the CLI and requires `MINERU_MANAGED_API_URL` | `mineru-runner.ts` |
-| 8 | Two PDFs whose first heading yields the same `slug`: the later import wipes and overwrites the earlier paper folder | `import-pdf.ts` (normalize) |
-| 9 | If the process exits while a web task runs, that task stays `running` in `tasks.json` and cannot be deleted or retried from the UI | `lib/local-tasks.ts` |
-| 10 | On resume, metadata enrichment, auto-linking and reading assets run again (caches avoid repeat calls); `needs_review` in `report.json` is not reflected in task status | `import-pdf.ts` |
-| 11 | A reading-asset model call that still fails after retries throws and fails the whole import; since it is not a named stage, CLI tasks record the failure under `translate`. The code comment intends reading-asset failures not to block the main export | `generate-reading-assets.ts`, `import-pdf.ts` |
+| 1 | The CLI and the web each keep their own task records and don't see each other; web tasks are not reused by content hash and have no concurrency limit | `packages/tasks`, `apps/desktop-web/lib/local-tasks.ts` |
+| 2 | Re-importing the same paper wipes its paper folder first; files the user added there are deleted | `import-pdf.ts` (normalize) |
+| 3 | On resume, metadata enrichment, auto-linking and reading assets run again (their caches avoid repeat calls) | `import-pdf.ts` |
+| 4 | Besides env vars, the MinerU token is read from `.env.local` / `.env` in the **process cwd**, not the config dir; on the web, Next.js loads `apps/desktop-web/.env*` into the environment | `mineru-runner.ts` |
+| 5 | Running the compiled CLI directly (`node apps/cli/dist/...`) without pnpm / npm has no `INIT_CWD`, so arguments resolve against the process cwd | `apps/cli/src/cli/main.ts` |

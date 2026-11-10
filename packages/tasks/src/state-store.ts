@@ -120,7 +120,8 @@ export function createTaskStateStore(config: AppConfig): TaskStateStore {
 export function formatTaskLine(task: PipelineTaskState): string {
   const result = task.slug ? ` -> ${task.slug}` : '';
   const error = task.error ? ` (${task.error})` : '';
-  return `${task.taskId}  ${task.status.padEnd(9)}  ${basename(task.sourcePath)}${result}${error}`;
+  const review = task.result?.qualityStatus === 'needs_review' ? ` [需复核：${task.result.qualityWarningCount ?? 0} 条警告]` : '';
+  return `${task.taskId}  ${task.status.padEnd(9)}  ${basename(task.sourcePath)}${result}${review}${error}`;
 }
 
 export function resetTaskForRetry(task: PipelineTaskState): PipelineTaskState {

@@ -11,9 +11,9 @@
 
 ## Task queue
 
-- `lib/local-tasks.ts` keeps tasks in an in-memory `Map`, persisted to `<workspace>/.pipeline/desktop-web/tasks/tasks.json` after every change. It does **not** use `packages/tasks`; CLI and Web task lists are separate.
+- `lib/local-tasks.ts` keeps tasks in an in-memory `Map` on `globalThis` (Next.js may load the module once per route; module-level state would split), persisted to `<workspace>/.pipeline/desktop-web/tasks/tasks.json` after every change. It does **not** use `packages/tasks`; CLI and Web task lists are separate.
 - Each upload starts `runTask` immediately (no concurrency limit, no reuse by hash). Retry keeps `completed` / `skipped` steps and passes them as `completedSteps`.
-- Single Node process: the queue does not survive across processes or a restart while running; a task left `running` after a crash stays `running` in `tasks.json`.
+- Single Node process: the queue does not survive a restart. On the first read after start, `queued` / `running` tasks not running in this process are marked `failed` with a retry hint. Every exported entry point calls `hydrateTasks()` before touching the map, so persisting never drops older tasks.
 - Errors go through `lib/error-diagnostics.ts` (`diagnoseError`) to a Chinese summary plus suggestions. Add a rule there when you add a new user-fixable failure.
 
 ## Rules

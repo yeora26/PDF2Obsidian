@@ -28,7 +28,7 @@ Dependency direction: `providers` ← `core` ← `pipeline` ← `tasks` ← apps
 
 `.pipeline/` (MinerU output, caches, tasks, uploads, SQLite), `node_modules/`, `dist/`, `.next/`, `*.tsbuildinfo`, `*.sqlite`, `*.db`, `pdf2obsidian.config.yaml`, `.env*` (except `.env.example`), `output/`.
 
-- Relative paths in config resolve against the **process cwd**. `pnpm dev:cli` and `pnpm dev:oss` run inside `apps/cli` / `apps/desktop-web` (pnpm `--filter`), not the repo root; see [系统设计 §9](../zh/system-design.md#9-已知问题与文档代码差异).
+- `pnpm dev:cli` and `pnpm dev:oss` run inside `apps/cli` / `apps/desktop-web` (pnpm `--filter`), not the repo root. So never resolve a user path against `process.cwd()`: config paths resolve against the config file's dir (`loadConfig`), CLI arguments against `INIT_CWD`, web data against the workspace root (`lib/paths.ts`).
 - Scratch files, sample PDFs and experiment output go in a temp dir outside the repo.
 - Never hand-edit files in a user's Vault or in `.pipeline/` to "fix" a result; re-run the task.
 

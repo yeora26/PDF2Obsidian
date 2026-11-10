@@ -5,7 +5,7 @@
 ## Secrets
 
 - Keys live in env vars or a git-ignored `.env.local` / `.env`. Config refers to them by name: `translation.apiKeyEnv` (e.g. `DEEPSEEK_API_KEY`), `mineru.apiTokenEnv` (default `MINERU_OFFICIAL_API_TOKEN`), `easyScholar.secretKeyEnv`.
-- `mineru-runner.ts` also reads the token from `.env.local`, `.env`, `web/.env.local`, `web/.env` relative to cwd, and treats a value that starts with `eyJ` or contains `.` as a literal token.
+- `mineru-runner.ts` also reads the token from `.env.local`, `.env`, `web/.env.local`, `web/.env` relative to the process cwd (not the config dir), and treats a value that starts with `eyJ` or contains `.` as a literal token.
 - Never commit `pdf2obsidian.config.yaml`, `.env*`, or a key in code, docs, fixtures or commit messages. Never print a key in logs or error messages; say which env var is missing instead.
 - Test values you need go in env vars of your own shell, not in tracked files.
 

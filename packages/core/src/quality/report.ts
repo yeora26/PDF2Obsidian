@@ -42,6 +42,7 @@ export async function createQualityReport(input: {
   readingAssets: Array<{
     cacheHit: boolean;
     warnings: string[];
+    failed?: boolean | undefined;
   }>;
   reportPath: string;
 }): Promise<QualityReport> {
@@ -92,7 +93,7 @@ export async function createQualityReport(input: {
       metadataFieldCount: input.metadataFieldCount,
       metadataSources: input.metadataSources,
       metadataCacheHits: input.metadataCacheHits,
-      readingAssetCount: input.readingAssets.length,
+      readingAssetCount: input.readingAssets.filter((asset) => !asset.failed).length,
       readingAssetCacheHitCount: input.readingAssets.filter((asset) => asset.cacheHit).length
     }
   };

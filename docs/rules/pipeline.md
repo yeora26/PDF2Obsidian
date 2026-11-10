@@ -4,10 +4,10 @@
 
 ## Stages
 
-`importPdf({ pdfPath, config, onStep, completedSteps })` runs `upload → mineru → normalize → translate → obsidian_export → quality_check` (`importPipelineSteps`). It reports each stage through `onStep` (`running | completed | failed | skipped`) and returns `ImportPdfResult` (paths of the notes, `slug`, `sourceHash`, `configSummary`).
+`importPdf({ pdfPath, config, onStep, completedSteps })` runs `upload → mineru → normalize → translate → obsidian_export → quality_check` (`importPipelineSteps`). It reports each stage through `onStep` (`running | completed | failed | skipped`) and returns `ImportPdfResult` (paths of the notes, `slug`, `sourceHash`, `qualityStatus`, `qualityWarningCount`, `configSummary`).
 
 - Stage names are a contract with `packages/tasks` (`state.yaml`), the Web task queue, and the Web progress UI labels. Adding, renaming or reordering a stage changes all of them and persisted task files.
-- Work that is not a named stage (auto-link, metadata enrichment, reading assets, reference stubs, Bases file) runs inside the stage that needs it or between stages. It runs again on every resume; keep it idempotent.
+- Work that is not a named stage (auto-link, metadata enrichment, reading assets, reference stubs, Bases file) runs inside the stage that needs it or between stages. It runs again on every resume; keep it idempotent. It must not fail the import for an optional output: catch, record a warning for `report.json` (see reading assets, metadata), and continue.
 - `importPdf` throws on failure; it does not catch per-stage. Callers turn the error into task state. Error text is shown to users: Chinese, say what to check.
 
 ## Caches and identities
@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | `sourceHash` | SHA-256 of the PDF | Task reuse in `packages/tasks` |
 | MinerU `runId` | first 15 chars of the file-name slug + 16 chars of the hash → `<mineru.outputDir>/<runId>/` | Re-parse (MinerU quota / time) |
-| `slug` | first heading of MinerU Markdown, else file name | Paper folder in the Vault moves; old folder is left behind |
+| `slug` | first heading of MinerU Markdown, else file name; `-<8 hash chars>` appended when that folder's index note has another `sourceHash` (`resolveUniqueSlug`) | Paper folder in the Vault moves; old folder is left behind |
 | Translation cache | sha256(provider, preset, baseUrl, model, systemPrompt, chunk content) in `translation.cacheDir` | Re-translate (paid calls) |
 | Chunking | `chunkMarkdown(markdown, chunkCharLimit)` | Different chunks → every chunk misses cache |
 | Reading-asset cache | sha256(provider, preset, baseUrl, model, `readingAssets.systemPrompt`, `sourceHash`, asset kind, asset prompt) in `readingAssets.cacheDir` | Regenerate 摘要 / 术语表 / 问答 |
@@ -27,7 +27,7 @@ Changing any of these (including the chunker or the prompt format sent with each
 ## Vault writes
 
 - All output goes under `<vault.path>/<vault.documentDir>/`. `documentDir` is forced to a relative path by the schema.
-- `normalize` deletes `<documentDir>/<slug>/` and rebuilds it (unless resumed). Two PDFs whose first heading gives the same slug overwrite each other; do not add more deletion.
+- `normalize` deletes `<documentDir>/<slug>/` and rebuilds it (unless resumed). `resolveUniqueSlug` keeps a different paper from taking an existing folder; keep that check before any deletion, and do not add more deletion.
 - Reference stubs are written as `<documentDir>/<stub-slug>.md` only when no note with a matching title exists; never overwrite user notes.
 - Auto-link skips frontmatter, code, headings, existing links and images. Keep that guarantee when changing `auto-link.ts`.
 

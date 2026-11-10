@@ -25,6 +25,8 @@ export interface ReadingAssetResult {
   path: string;
   cacheHit: boolean;
   warnings: string[];
+  /** 模型调用重试用尽仍失败；此时没有写出文件，失败原因在 warnings 中 */
+  failed?: boolean | undefined;
 }
 
 // 阅读材料类型
@@ -63,14 +65,28 @@ export async function generateReadingAssets(input: GenerateReadingAssetsInput): 
     // 缓存维度包含源文档 hash 和具体 prompt，论文不变但产物模板调整时会自动重新生成。
     const cachePath = join(input.config.cacheDir, `${createCacheKey(input, spec)}.md`);
     const cacheHit = await pathExists(cachePath);
-    const content = cacheHit
-      ? await readTextFile(cachePath)
-      : await generateWithRetry({
-        client,
-        systemPrompt: input.config.systemPrompt,
-        prompt: spec.prompt,
-        maxRetries: input.config.maxRetries
+    let content: string;
+    try {
+      content = cacheHit
+        ? await readTextFile(cachePath)
+        : await generateWithRetry({
+          client,
+          systemPrompt: input.config.systemPrompt,
+          prompt: spec.prompt,
+          maxRetries: input.config.maxRetries
+        });
+    } catch (error) {
+      // 阅读材料是辅助产物：单份生成失败只记入质量报告，不让正文导出失败。
+      const message = error instanceof Error ? error.message : String(error);
+      results.push({
+        kind: spec.kind,
+        path: join(input.documentRoot, spec.fileName),
+        cacheHit: false,
+        warnings: [`${spec.kind}: 生成失败：${message}`],
+        failed: true
       });
+      continue;
+    }
 
     if (!cacheHit) {
       await writeTextFile(cachePath, content);

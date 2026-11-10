@@ -34,8 +34,19 @@ export interface LocalTask {
 
 const pipelineSteps: ImportPipelineStep[] = [...importPipelineSteps];
 
-const tasks = new Map<string, LocalTask>();
-const running = new Set<string>();
+interface LocalTaskRegistry {
+  tasks: Map<string, LocalTask>;
+  running: Set<string>;
+  hydrated: boolean;
+}
+
+// Next.js 可能为不同路由各加载一份本模块；队列状态挂在 globalThis 上，保证同一进程只有一份。
+const registryKey = '__pdf2obsidianLocalTasks';
+const registry: LocalTaskRegistry = ((globalThis as Record<string, unknown>)[registryKey] as LocalTaskRegistry | undefined)
+  ?? { tasks: new Map<string, LocalTask>(), running: new Set<string>(), hydrated: false };
+(globalThis as Record<string, unknown>)[registryKey] = registry;
+const tasks = registry.tasks;
+const running = registry.running;
 
 export async function listLocalTasks(): Promise<LocalTask[]> {
   await hydrateTasks();
@@ -48,6 +59,7 @@ export async function getLocalTask(id: string): Promise<LocalTask | undefined> {
 }
 
 export async function createLocalTask(file: File): Promise<LocalTask> {
+  await hydrateTasks();
   const id = `${formatTaskDate(new Date())}-${randomUUID().slice(0, 8)}`;
   const safeName = sanitizeFileName(file.name || `${id}.pdf`);
   const uploadDir = await getUploadDir();
@@ -78,6 +90,7 @@ export async function createLocalTask(file: File): Promise<LocalTask> {
  * 先下载 PDF 到上传目录，然后复用与文件上传相同的流水线。
  */
 export async function createLocalTaskFromUrl(url: string): Promise<LocalTask> {
+  await hydrateTasks();
   const id = `${formatTaskDate(new Date())}-${randomUUID().slice(0, 8)}`;
   const uploadDir = await getUploadDir();
   const downloadDir = join(await getDesktopPipelineDir(), 'downloads');
@@ -260,18 +273,40 @@ async function updateTask(id: string, patch: Partial<LocalTask>, log?: string): 
 }
 
 async function hydrateTasks(): Promise<void> {
+  if (registry.hydrated) return;
   const taskDir = await getTaskDir();
   await mkdir(taskDir, { recursive: true });
   const indexPath = join(taskDir, 'tasks.json');
+  let parsed: LocalTask[] = [];
   try {
-    const parsed = JSON.parse(await readFile(indexPath, 'utf8')) as LocalTask[];
-    for (const task of parsed) {
-      if (!tasks.has(task.id)) {
-        tasks.set(task.id, task);
-      }
-    }
+    parsed = JSON.parse(await readFile(indexPath, 'utf8')) as LocalTask[];
   } catch {
     // 首次启动没有任务索引是正常情况。
+  }
+
+  // 本进程启动前留下的排队 / 运行中任务已没有执行者（上次进程退出或崩溃），标为失败以便重试续跑。
+  const now = new Date().toISOString();
+  let interrupted = 0;
+  for (const task of parsed) {
+    if (tasks.has(task.id)) continue;
+    if ((task.status === 'queued' || task.status === 'running') && !running.has(task.id)) {
+      interrupted += 1;
+      tasks.set(task.id, {
+        ...task,
+        status: 'failed',
+        error: '本地 Web 重启前任务未完成，点击重试可从中断的阶段继续。',
+        finishedAt: now,
+        updatedAt: now,
+        steps: task.steps.map((step) => (step.status === 'running' ? { ...step, status: 'failed', updatedAt: now } : step)),
+        logs: [...task.logs, `${formatTime(now)} 本地 Web 已重启，任务中断`].slice(-240)
+      });
+      continue;
+    }
+    tasks.set(task.id, task);
+  }
+  registry.hydrated = true;
+  if (interrupted > 0) {
+    await persistTasks();
   }
 }
 

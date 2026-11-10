@@ -4,8 +4,9 @@
 
 ## Sources
 
-- One file: `pdf2obsidian.config.yaml` (git-ignored). CLI: `--config <path>` (default `pdf2obsidian.config.yaml` relative to cwd). Web: `PDF2OBSIDIAN_CONFIG` env var, else `<workspace root>/pdf2obsidian.config.yaml` (`apps/desktop-web/lib/paths.ts`).
-- `loadConfig()` in `packages/core/src/config/load-config.ts` parses YAML and runs the zod schema, which fills defaults and validates. Downstream code trusts the parsed `AppConfig` and does not re-default.
+- One file: `pdf2obsidian.config.yaml` (git-ignored). CLI: `--config <path>` (default `pdf2obsidian.config.yaml`, relative to the invocation dir `INIT_CWD`, else cwd). Web: `PDF2OBSIDIAN_CONFIG` env var, else `<workspace root>/pdf2obsidian.config.yaml` (`apps/desktop-web/lib/paths.ts`).
+- `loadConfig()` in `packages/core/src/config/load-config.ts` parses YAML and runs the zod schema, which fills defaults and validates, then `resolveConfigPaths` makes every path key absolute relative to the config file's directory (`mineru.command` only when it contains a slash). Downstream code trusts the parsed `AppConfig` and does not re-default or re-resolve.
+- A new path-valued key must be added to `resolveConfigPaths`.
 - The Web settings page writes the file through `apps/desktop-web/lib/config.ts`: it validates a temp copy with `loadConfig` before overwriting, and normalises legacy values. YAML comments are lost when the Web saves.
 - Secrets are referenced by env-var name (`translation.apiKeyEnv`, `mineru.apiTokenEnv`, `metadata.journalMetrics.easyScholar.secretKeyEnv`). Literal `translation.apiKey` / `secretKey` exist for local debugging only.
 
@@ -21,4 +22,4 @@
 
 - Users keep old config files. Rename or remove a key only with a migration in a `z.preprocess` (example: `translation.provider: deepseek` → `openai-compatible` + `preset: deepseek`), and mirror it in `normalizeConfigData` on the Web side.
 - Enum values (`mineru.mode`, `mineru.backend`, `translation.provider`, `translation.preset`) are a contract with the Web forms and `mineru-runner.ts`; change all together.
-- Code defaults and the example YAML differ for some keys (cache dirs, `metadata.online.enabled`, `easyScholar.enabled`). Do not "fix" one side silently; see [系统设计 §9](../zh/system-design.md#9-已知问题与文档代码差异).
+- The example YAML uses the code defaults. Keep them equal; outbound services (`metadata.online`, `easyScholar`) stay off by default (see [secrets-and-privacy](secrets-and-privacy.md)).

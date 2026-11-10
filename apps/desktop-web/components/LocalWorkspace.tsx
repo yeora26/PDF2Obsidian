@@ -31,6 +31,8 @@ interface LocalTask {
   error?: string;
   result?: {
     slug: string;
+    qualityStatus?: 'completed' | 'needs_review';
+    qualityWarningCount?: number;
     originalNotePath?: string;
     translatedNotePath: string;
     indexNotePath: string;
@@ -862,7 +864,9 @@ function getTaskHint(task: LocalTask): string {
     return task.error;
   }
   if (task.status === 'completed') {
-    return '处理完成';
+    return task.result?.qualityStatus === 'needs_review'
+      ? `处理完成，需复核：${task.result.qualityWarningCount ?? 0} 条警告，详见论文目录中的质量报告`
+      : '处理完成';
   }
   const activeStep = task.steps.find((step) => step.status === 'running')
     ?? task.steps.find((step) => step.status === 'pending');

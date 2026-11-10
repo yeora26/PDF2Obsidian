@@ -42,6 +42,9 @@ export interface ImportPdfResult {
   indexNotePath: string;
   databaseNotePath?: string | undefined;
   referenceStubCount?: number | undefined;
+  /** 质量报告结论；needs_review 表示产物可用但有警告，需要人工检查 report.json */
+  qualityStatus?: 'completed' | 'needs_review' | undefined;
+  qualityWarningCount?: number | undefined;
   configSummary?: {
     mineruMode: string;
     mineruBackend: string;
@@ -109,7 +112,11 @@ export async function importPdf(input: ImportPdfInput): Promise<ImportPdfResult>
   const primaryMarkdownPath = await findPrimaryMarkdown(mineruOutputRoot, 'document');
   const originalMarkdown = await readTextFile(primaryMarkdownPath);
   const originalTitle = extractFirstHeading(originalMarkdown) ?? baseName;
-  const slug = toSlug(originalTitle) || sourceSlug;
+  const slug = await resolveUniqueSlug({
+    baseSlug: toSlug(originalTitle) || sourceSlug,
+    documentDirRoot: join(input.config.vault.path, input.config.vault.documentDir),
+    sourceHash
+  });
 
   const documentRoot = join(input.config.vault.path, input.config.vault.documentDir, slug);
 
@@ -323,11 +330,14 @@ export async function importPdf(input: ImportPdfInput): Promise<ImportPdfResult>
   }
 
   // ── quality_check ─────────────────────────────────────────────
+  const reportPath = join(documentRoot, input.config.quality.reportFileName);
+  let qualitySummary: { status: 'completed' | 'needs_review'; warningCount: number } | undefined;
   if (resume.has('quality_check')) {
     await notifyStep(input, 'quality_check', 'skipped', '断点续跑：已有质检报告');
+    qualitySummary = await readQualitySummary(reportPath);
   } else {
     await notifyStep(input, 'quality_check', 'running');
-    await createQualityReport({
+    const report = await createQualityReport({
       originalNotePath: join(documentRoot, `${slug}.original.md`),
       translatedNotePath: join(documentRoot, `${slug}.zh.md`),
       originalNote,
@@ -342,9 +352,12 @@ export async function importPdf(input: ImportPdfInput): Promise<ImportPdfResult>
       metadataWarnings: enriched.warnings,
       metadataCacheHits: enriched.cacheHits,
       readingAssets,
-      reportPath: join(documentRoot, input.config.quality.reportFileName)
+      reportPath
     });
-    await notifyStep(input, 'quality_check', 'completed');
+    qualitySummary = { status: report.status, warningCount: report.warnings.length };
+    await notifyStep(input, 'quality_check', 'completed',
+      report.status === 'needs_review' ? `需复核：${report.warnings.length} 条警告，见 ${input.config.quality.reportFileName}` : undefined
+    );
   }
 
   const databaseNotePath = await exportObsidianDatabase(input.config);
@@ -362,6 +375,8 @@ export async function importPdf(input: ImportPdfInput): Promise<ImportPdfResult>
     translatedNotePath: join(documentRoot, `${slug}.zh.md`),
     indexNotePath: join(documentRoot, `${slug}.index.md`),
     databaseNotePath,
+    qualityStatus: qualitySummary?.status,
+    qualityWarningCount: qualitySummary?.warningCount,
     configSummary: {
       mineruMode: input.config.mineru.mode,
       mineruBackend: input.config.mineru.backend,
@@ -372,6 +387,50 @@ export async function importPdf(input: ImportPdfInput): Promise<ImportPdfResult>
       readingAssetsEnabled: input.config.readingAssets.enabled
     }
   };
+}
+
+/**
+ * 首个标题相同的不同论文会得到相同 slug；normalize 会清空论文目录，
+ * 所以目录已属于另一篇论文（索引页 sourceHash 不同）时，给 slug 加内容哈希后缀。
+ * 同一篇论文重复导入或续跑时得到的 slug 保持不变。
+ */
+async function resolveUniqueSlug(input: {
+  baseSlug: string;
+  documentDirRoot: string;
+  sourceHash: string;
+}): Promise<string> {
+  const owner = await readIndexSourceHash(join(input.documentDirRoot, input.baseSlug, `${input.baseSlug}.index.md`));
+  if (!owner || owner === input.sourceHash) {
+    return input.baseSlug;
+  }
+
+  return `${input.baseSlug}-${input.sourceHash.replace(/^sha256:/, '').slice(0, 8)}`;
+}
+
+async function readIndexSourceHash(indexPath: string): Promise<string | undefined> {
+  if (!(await pathExists(indexPath))) {
+    return undefined;
+  }
+
+  const content = await readTextFile(indexPath);
+  const frontmatter = /^---\n([\s\S]*?)\n---/.exec(content)?.[1] ?? '';
+  return /^sourceHash:\s*["']?([^"'\s]+)/m.exec(frontmatter)?.[1];
+}
+
+async function readQualitySummary(reportPath: string): Promise<{ status: 'completed' | 'needs_review'; warningCount: number } | undefined> {
+  if (!(await pathExists(reportPath))) {
+    return undefined;
+  }
+
+  try {
+    const report = JSON.parse(await readTextFile(reportPath)) as { status?: unknown; warnings?: unknown };
+    if (report.status !== 'completed' && report.status !== 'needs_review') {
+      return undefined;
+    }
+    return { status: report.status, warningCount: Array.isArray(report.warnings) ? report.warnings.length : 0 };
+  } catch {
+    return undefined;
+  }
 }
 
 async function notifyStep(
@@ -446,7 +505,9 @@ function formatAutoLinkedReferences(links: Array<{ text: string; target: string 
   ];
 }
 
-function formatReadingAssetLinks(assets: ReadingAssetResult[]): string[] {
+function formatReadingAssetLinks(allAssets: ReadingAssetResult[]): string[] {
+  // 生成失败的阅读材料没有文件，不在索引页放死链。
+  const assets = allAssets.filter((asset) => !asset.failed);
   if (assets.length === 0) {
     return [];
   }

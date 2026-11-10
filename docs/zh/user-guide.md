@@ -50,7 +50,7 @@ PDF2OBSIDIAN_CONFIG=/path/to/pdf2obsidian.config.yaml pnpm dev:oss
 
 ## 3. 配置
 
-配置文件为 `pdf2obsidian.config.yaml`。下表的「默认」是代码默认值（`packages/core/src/config/load-config.ts`，省略该键时生效）；模板文件中个别值与此不同，见[系统设计 §9](system-design.md#9-已知问题与文档代码差异)。每个键的完整说明以模板注释为准。
+配置文件为 `pdf2obsidian.config.yaml`。下表的「默认」是代码默认值（`packages/core/src/config/load-config.ts`，省略该键时生效），模板文件与之一致。配置中的相对路径按配置文件所在目录解析。每个键的完整说明以模板注释为准。
 
 ### 3.1 `vault`
 
@@ -160,24 +160,25 @@ Cloudflare Workers AI 的 `baseUrl` 形如 `https://api.cloudflare.com/client/v4
 2. **导入**：拖入或选择 PDF；或在「从链接导入」中填 arXiv ID、DOI 或 PDF URL。每个任务立即开始处理。
 3. **查看进度**：左侧任务列表显示状态和阶段；失败任务显示中文原因和处理建议。
 4. **查看结果**：中间预览原 PDF；右侧切换译文、阅读材料、论文信息、Bases。
-5. **重试与删除**：失败任务可重试，已完成的阶段会跳过；删除只删除任务记录和上传的 PDF，不删除 Vault 中的笔记。
+5. **复核**：有质量警告的任务显示「需复核」和警告数，原因见论文目录中的 `report.json`。
+6. **重试与删除**：失败任务可重试，已完成的阶段会跳过；本地 Web 重启前没跑完的任务会标为失败，同样可重试。删除只删除任务记录和上传的 PDF，不删除 Vault 中的笔记。
 
 Web 与命令行的任务记录互相独立。
 
 ## 5. 命令行
 
-`pnpm dev:cli` 会先编译共享包，然后在 `apps/cli` 目录下运行，所以 PDF 路径和 `--config` 请使用绝对路径（见[系统设计 §9](system-design.md#9-已知问题与文档代码差异)）。
+`pnpm dev:cli` 会先编译共享包再运行。PDF 路径、`--config` 和监听目录的相对路径按执行命令所在的目录解析。
 
 ```bash
-pnpm dev:cli import /abs/path/paper.pdf --config /abs/path/pdf2obsidian.config.yaml
+pnpm dev:cli import paper.pdf --config ./pdf2obsidian.config.yaml
 ```
 
 | 命令 | 说明 |
 | --- | --- |
-| `import <source>` | 导入单篇：本地路径或 PDF URL（裸 arXiv ID 与 DOI 的识别问题见[系统设计 §9](system-design.md#9-已知问题与文档代码差异)），输出结果 JSON，不建任务记录 |
+| `import <source>` | 导入单篇：本地路径、arXiv ID（如 `2401.12345`）、DOI 或 PDF URL，输出结果 JSON，不建任务记录 |
 | `batch <pdf...> [-j N]` | 批量导入，同一 PDF 复用已有未失败的任务 |
 | `watch [inboxDir]` | 持续监听目录（含子目录），新 PDF 自动导入 |
-| `tasks list` | 列出任务：`taskId  状态  文件名 -> slug (错误)` |
+| `tasks list` | 列出任务：`taskId  状态  文件名 -> slug [需复核] (错误)` |
 | `tasks show <taskId>` | 输出任务完整状态 JSON |
 | `tasks retry <taskId>` | 重试失败任务，已完成阶段跳过 |
 
@@ -199,7 +200,7 @@ pnpm dev:cli import /abs/path/paper.pdf --config /abs/path/pdf2obsidian.config.y
 
 此外，`<documentDir>/` 下会有参考文献桩笔记（Vault 中尚无同名笔记时创建）和 `数据库.base`。
 
-**注意：** 重新导入同一篇论文（或首个标题相同的另一篇）会先清空该论文目录再写入；请不要在论文目录内存放手写笔记。
+**注意：** 重新导入同一篇论文会先清空该论文目录再写入，请不要在论文目录内存放手写笔记。首个标题相同的另一篇论文会写入带哈希后缀的新目录（如 `<slug>-1a2b3c4d/`），不会覆盖。
 
 ## 7. 数据与缓存目录
 
@@ -215,13 +216,13 @@ pnpm dev:cli import /abs/path/paper.pdf --config /abs/path/pdf2obsidian.config.y
 | 命令行下载 | `.pipeline/downloads` | 按链接导入的 PDF |
 | Web 数据 | `.pipeline/desktop-web/` | `uploads/`、`downloads/`、`tasks/tasks.json` |
 
-全部目录已在 `.gitignore` 中。删除缓存目录会导致下次导入重新调用 MinerU 或 AI 服务。
+以上默认值都是相对配置文件所在目录的路径。全部目录已在 `.gitignore` 中。删除缓存目录会导致下次导入重新调用 MinerU 或 AI 服务。
 
 ## 8. 常见问题
 
 | 现象 | 检查 |
 | --- | --- |
-| 找不到配置文件 | 当前目录是否有 `pdf2obsidian.config.yaml`，或用 `--config` / `PDF2OBSIDIAN_CONFIG` 指定绝对路径 |
+| 找不到配置文件 | 执行命令的目录是否有 `pdf2obsidian.config.yaml`，或用 `--config` / `PDF2OBSIDIAN_CONFIG` 指定路径 |
 | 「配置预检失败」 | 按提示修正；`baseUrl` 是否仍含占位符或带 `/chat/completions`；Key 环境变量是否在启动 Web 前设置 |
 | AI 服务 401 / 403 | Key 是否有效、有该模型权限；`apiKeyEnv` 是否填的是变量名而不是 Key 原文 |
 | AI 服务 404 | `baseUrl` 是否为服务根地址；模型名是否在该服务可用；Cloudflare 的 Account ID 是否已替换 |

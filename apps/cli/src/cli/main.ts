@@ -1,8 +1,15 @@
 import { Command } from 'commander';
-import { resolve, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { loadConfig } from '@pdf2obsidian/core';
 import { importPdf, resolvePdfSource } from '@pdf2obsidian/pipeline';
 import { formatTaskLine, getPipelineTask, listPipelineTasks, retryPipelineTask, runPdfBatch, watchPdfInbox } from '@pdf2obsidian/tasks';
+
+// pnpm --filter 会把工作目录切到 apps/cli；INIT_CWD 是用户实际执行命令的目录，命令行参数里的相对路径按它解析。
+const invocationDir = process.env.INIT_CWD ?? process.cwd();
+
+function fromInvocationDir(path: string): string {
+  return resolve(invocationDir, path);
+}
 
 const program = new Command();
 
@@ -16,10 +23,11 @@ program
   .argument('<source>', '本地 PDF 路径、arXiv ID、DOI 或 PDF URL')
   .option('-c, --config <path>', 'Path to config yaml', 'pdf2obsidian.config.yaml')
   .action(wrapAction(async (source: string, options: { config: string }) => {
-    const config = await loadConfig(resolve(options.config));
+    const configPath = fromInvocationDir(options.config);
+    const config = await loadConfig(configPath);
 
-    // 自动检测输入类型：本地路径直接传入，远程源先下载到临时目录。
-    const resolved = await resolvePdfSource(resolve(source), join('.pipeline', 'downloads'));
+    // 自动检测输入类型：本地路径按执行目录解析，远程源先下载到配置文件旁的 .pipeline/downloads。
+    const resolved = await resolvePdfSource(source, join(dirname(configPath), '.pipeline', 'downloads'), invocationDir);
     if (resolved.sourceType !== 'local') {
       console.log(`已识别 ${resolved.sourceType} 源，下载完成：${resolved.pdfPath}`);
     }
@@ -38,10 +46,10 @@ program
   .option('-c, --config <path>', 'Path to config yaml', 'pdf2obsidian.config.yaml')
   .option('-j, --concurrency <count>', 'Maximum concurrent imports')
   .action(wrapAction(async (pdfPaths: string[], options: { config: string; concurrency?: string }) => {
-    const config = await loadConfig(resolve(options.config));
+    const config = await loadConfig(fromInvocationDir(options.config));
     const concurrency = parseOptionalPositiveInteger(options.concurrency, 'concurrency');
     const result = await runPdfBatch({
-      pdfPaths: pdfPaths.map((pdfPath) => resolve(pdfPath)),
+      pdfPaths: pdfPaths.map((pdfPath) => fromInvocationDir(pdfPath)),
       config,
       concurrency
     });
@@ -56,10 +64,10 @@ program
   .argument('[inboxDir]', 'Directory to watch for PDF files')
   .option('-c, --config <path>', 'Path to config yaml', 'pdf2obsidian.config.yaml')
   .action(wrapAction(async (inboxDir: string | undefined, options: { config: string }) => {
-    const config = await loadConfig(resolve(options.config));
+    const config = await loadConfig(fromInvocationDir(options.config));
     await watchPdfInbox({
       config,
-      inboxDir: inboxDir ? resolve(inboxDir) : undefined
+      inboxDir: inboxDir ? fromInvocationDir(inboxDir) : undefined
     });
   }));
 
@@ -69,7 +77,7 @@ tasks
   .command('list')
   .option('-c, --config <path>', 'Path to config yaml', 'pdf2obsidian.config.yaml')
   .action(wrapAction(async (options: { config: string }) => {
-    const config = await loadConfig(resolve(options.config));
+    const config = await loadConfig(fromInvocationDir(options.config));
     const taskList = await listPipelineTasks(config);
     for (const task of taskList) {
       console.log(formatTaskLine(task));
@@ -81,7 +89,7 @@ tasks
   .argument('<taskId>', 'Task id')
   .option('-c, --config <path>', 'Path to config yaml', 'pdf2obsidian.config.yaml')
   .action(wrapAction(async (taskId: string, options: { config: string }) => {
-    const config = await loadConfig(resolve(options.config));
+    const config = await loadConfig(fromInvocationDir(options.config));
     const task = await getPipelineTask({
       taskId,
       config
@@ -98,7 +106,7 @@ tasks
   .argument('<taskId>', 'Task id')
   .option('-c, --config <path>', 'Path to config yaml', 'pdf2obsidian.config.yaml')
   .action(wrapAction(async (taskId: string, options: { config: string }) => {
-    const config = await loadConfig(resolve(options.config));
+    const config = await loadConfig(fromInvocationDir(options.config));
     const task = await retryPipelineTask({
       taskId,
       config

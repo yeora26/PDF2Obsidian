@@ -97,10 +97,10 @@ PDF2OBSIDIAN_CONFIG=/path/to/pdf2obsidian.config.yaml pnpm dev:oss
 .pipeline/desktop-web/uploads
 ```
 
-任务索引默认放在：
+任务索引默认放在（与 CLI 的任务记录相互独立）：
 
 ```text
-.pipeline/tasks
+.pipeline/desktop-web/tasks/tasks.json
 ```
 
 ## CLI 用法
@@ -200,10 +200,10 @@ mineru:
 
 常用字段：
 
-- `mode`：解析模式，`official` 使用 MinerU 官方 API，`local` 连接本地服务。
+- `mode`：解析模式，`official` 使用 MinerU 官方 API，`local` 连接 `apiUrl` 上的 MinerU HTTP 服务，`cli` 直接运行本地 `command`。
 - `backend`：解析后端，`pipeline`（常规）或 `vlm-http-client`（VLM 高精度）。
 - `apiUrl`：本地或远程 MinerU 服务地址（`mode` 为 `local` 时生效）。
-- `command`：本地 MinerU 命令路径（`mode` 为 `local` 时生效）。
+- `command`：本地 MinerU 命令路径（`mode` 为 `cli` 时生效）。
 - `method`：解析方案，`auto`、`txt` 或 `ocr`。
 - `modelVersion`：官方 API 云端模型版本，`vlm`（高精度）或 `pipeline`（常规），仅 `mode` 为 `official` 时生效。
 - `apiTokenEnv`：官方 API Token 或环境变量名，仅 `mode` 为 `official` 时生效。
@@ -220,7 +220,7 @@ translation:
   baseUrl: https://api.deepseek.com
   apiKeyEnv: DEEPSEEK_API_KEY
   chunkCharLimit: 24000
-  cacheDir: .pipeline/translation-cache
+  cacheDir: .pipeline/core-cache
   maxRetries: 3
   systemPrompt: '你是专业技术文档译者...'
 ```
@@ -320,8 +320,8 @@ metadata:
 ```
 
 - `enrichFromMarkdown`：从 Markdown 正文启发式提取标题、作者、年份、DOI 等。
-- `online`：通过 CrossRef 和 OpenAlex API 在线补全元数据。
-- `journalMetrics`：期刊指标补全（影响因子、JCR 分区、中科院分区等），通过 EasyScholar API 查询并缓存到本地 SQLite。
+- `online`：通过 CrossRef 和 OpenAlex API 在线补全元数据（默认关闭，上例为开启写法）。
+- `journalMetrics`：期刊指标补全（影响因子、JCR 分区、中科院分区等），通过 EasyScholar API 查询并缓存到本地 SQLite（`easyScholar.enabled` 默认关闭，需要 SecretKey）。
 - `overrides`：按论文 slug 手动覆盖元数据字段。
 
 ### Obsidian
@@ -388,7 +388,7 @@ upload -> mineru -> normalize -> translate -> obsidian_export -> quality_check
 
 - `*.zh.md`：中文译文或中文原文。
 - `*.index.md`：论文索引页，包含元信息、PDF 链接、阅读材料和自动关联。
-- `*.original.md`：原文 Markdown，仅在需要保留原文时生成。
+- `*.original.md`：原文 Markdown。
 - `摘要.md`：核心观点摘要。
 - `术语表.md`：关键术语和上下文解释。
 - `问答.md`：面向复习的问题与答案。
@@ -452,11 +452,14 @@ pnpm build:oss
   mineru/
   tasks/
   inbox/
-  translation-cache/
-  reading-assets-cache/
-  metadata-cache/
-  desktop-web/uploads/
+  downloads/
+  core-cache/          # 翻译与在线元数据缓存
+  core-assets-cache/   # 阅读材料缓存
+  journal-metrics.sqlite
+  desktop-web/         # uploads/、downloads/、tasks/tasks.json
 ```
+
+配置中的相对路径按配置文件所在目录解析，所以默认都在配置文件旁的 `.pipeline/` 下。
 
 这些目录用于解析中间产物、任务状态、缓存和本地上传文件。它们不应该提交到 Git。
 

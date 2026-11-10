@@ -4,7 +4,7 @@
 
 ## Commands (`apps/cli/src/cli/main.ts`)
 
-`import <source>` (local path, arXiv id, DOI or PDF URL; runs `importPdf` directly, no task record), `batch <pdfPaths...> [-j N]`, `watch [inboxDir]`, `tasks list | show <id> | retry <id>`. Every command takes `-c, --config` (default `pdf2obsidian.config.yaml`). Errors print the stack and set exit code 1.
+`import <source>` (local path, arXiv id, DOI or PDF URL; runs `importPdf` directly, no task record), `batch <pdfPaths...> [-j N]`, `watch [inboxDir]`, `tasks list | show <id> | retry <id>`. Every command takes `-c, --config` (default `pdf2obsidian.config.yaml`). Path arguments resolve against `INIT_CWD` (where the user ran `pnpm`), else cwd, via `fromInvocationDir`; `import` passes the raw source to `resolvePdfSource` so arXiv ids and DOIs are detected before any path resolution. Errors print the stack and set exit code 1.
 
 ## Task store (`packages/tasks`)
 

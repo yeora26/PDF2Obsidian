@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
@@ -20,18 +20,20 @@ export interface ResolvedPdfSource {
 
 /**
  * 将用户输入（本地路径、arXiv ID、DOI 或 PDF URL）解析为本地 PDF 文件路径。
- * 远程源会下载到 outputDir 目录中。
+ * 远程源会下载到 outputDir 目录中；本地相对路径按 baseDir（默认进程工作目录）解析。
+ * 调用方应传入原始输入，先判断类型再解析路径，否则 arXiv ID、DOI 会被误当成本地路径。
  */
-export async function resolvePdfSource(input: string, outputDir: string): Promise<ResolvedPdfSource> {
+export async function resolvePdfSource(input: string, outputDir: string, baseDir?: string): Promise<ResolvedPdfSource> {
   const trimmed = input.trim();
 
   // 本地文件路径
   if (!looksLikeRemoteSource(trimmed)) {
-    const stats = await stat(trimmed);
+    const localPath = resolve(baseDir ?? process.cwd(), trimmed);
+    const stats = await stat(localPath);
     if (!stats.isFile()) {
-      throw new Error(`路径不是文件：${trimmed}`);
+      throw new Error(`路径不是文件：${localPath}`);
     }
-    return { pdfPath: trimmed, sourceType: 'local', originalInput: input };
+    return { pdfPath: localPath, sourceType: 'local', originalInput: input };
   }
 
   await mkdir(outputDir, { recursive: true });

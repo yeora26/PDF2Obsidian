@@ -77,7 +77,7 @@ flowchart LR
 ### 3.1 来源与加载
 
 - 唯一配置文件 `pdf2obsidian.config.yaml`（不入库），模板为 `pdf2obsidian.config.example.yaml`。
-- 命令行用 `--config` 指定，默认是当前工作目录下的 `pdf2obsidian.config.yaml`。
+- 命令行用 `--config` 指定，默认是执行命令所在目录下的 `pdf2obsidian.config.yaml`。命令行参数中的相对路径（配置、PDF、监听目录）按执行目录解析：优先取 pnpm / npm 设置的 `INIT_CWD`（`pnpm dev:cli` 实际在 `apps/cli` 中运行），否则取进程工作目录。
 - 本地 Web 优先读环境变量 `PDF2OBSIDIAN_CONFIG`，否则读 workspace 根目录（向上查找 `pnpm-workspace.yaml` 得到）的 `pdf2obsidian.config.yaml`；配置不存在时把模板内容作为表单草稿。
 - 配置顶层分为 `vault`、`mineru`、`translation`、`tasks`、`readingAssets`、`quality`、`obsidian`、`metadata` 八节，常用项见[使用指南 §3](user-guide.md#3-配置)。
 
@@ -87,6 +87,7 @@ flowchart LR
 
 - `vault.documentDir` 去掉盘符、UNC 前缀和首尾斜杠，保证是 Vault 内相对路径；为空时回落为 `Thesis`。
 - `mineru.apiUrl` 缺协议时补 `https://`。
+- 配置中的相对路径（`vault.path`、`mineru.outputDir`、各 `cacheDir`、`tasks.stateDir` / `inboxDir`、`journalMetrics.sqlite.path`，以及写成路径的 `mineru.command`）按**配置文件所在目录**解析为绝对路径；裸命令名（如 `mineru`）保持不变，继续按 `PATH` 查找。
 - `translation.enabled` 为真且 `provider` 不是 `ollama` 时，必须有 `apiKeyEnv` 或 `apiKey`。
 
 ### 3.3 兼容迁移
@@ -108,7 +109,7 @@ flowchart LR
 | --- | --- |
 | `upload` | 确认路径是文件，计算 SHA-256（`sourceHash`） |
 | `mineru` | 复制 PDF 到 `<mineru.outputDir>/<runId>/document.pdf`，调用 MinerU，完成后删除副本 |
-| `normalize` | 找到主 Markdown，取首个标题生成 `slug`，清空并重建 `<vault>/<documentDir>/<slug>/`，复制图片 |
+| `normalize` | 找到主 Markdown，取首个标题生成 `slug`（该目录已属于另一篇论文时加哈希后缀），清空并重建 `<vault>/<documentDir>/<slug>/`，复制图片 |
 | `translate` | 检测语言；中文或关闭翻译时跳过，否则按块翻译 |
 | `obsidian_export` | 写 `*.original.md`、`*.zh.md`、`*.index.md`，复制 PDF，提取参考文献并创建桩笔记 |
 | `quality_check` | 写 `report.json` |
@@ -134,7 +135,7 @@ flowchart LR
 
 ### 4.4 质量报告
 
-`report.json` 的 `status` 为 `completed` 或 `needs_review`。警告来源：标题数或图片数前后不一致、图片文件缺失、frontmatter 缺失或无效、元数据与阅读材料警告。`metrics` 记录分块数、缓存命中数、自动链接数、元数据字段数与来源等。该状态目前只写在报告里，不影响任务状态。
+`report.json` 的 `status` 为 `completed` 或 `needs_review`。警告来源：标题数或图片数前后不一致、图片文件缺失、frontmatter 缺失或无效、元数据与阅读材料警告（含阅读材料生成失败）。`metrics` 记录分块数、缓存命中数、自动链接数、元数据字段数与来源等。结论写入 `ImportPdfResult.qualityStatus` / `qualityWarningCount`：任务状态仍为 `completed`，命令行任务行与 Web 任务列表另外标出「需复核」及警告数。
 
 ## 5. 任务管理（packages/tasks，命令行）
 
@@ -172,7 +173,8 @@ flowchart LR
 
 `lib/local-tasks.ts` 自带一套与命令行独立的任务队列：
 
-- 任务保存在进程内 `Map`，每次变化写入 `.pipeline/desktop-web/tasks/tasks.json`（workspace 根目录下）。
+- 任务保存在进程内 `Map`（挂在 `globalThis` 上，保证 Next.js 各路由共用一份），每次变化写入 `.pipeline/desktop-web/tasks/tasks.json`（workspace 根目录下）。
+- 进程启动后首次读取任务索引时，把上次遗留的 `queued` / `running` 任务标为 `failed`（提示重启前未完成），可直接重试续跑。
 - 上传文件保存为 `.pipeline/desktop-web/uploads/<taskId>-<文件名>`；按链接导入先下载到 `.pipeline/desktop-web/downloads/` 再移入上传目录。
 - 每个任务创建后立即开始执行，没有并发上限，也不按哈希复用。
 - 进度按阶段估算（最高 96%，完成时 100%），日志最多保留 240 行。
@@ -213,7 +215,7 @@ flowchart LR
 | `.pipeline/downloads/` | 命令行按链接导入的下载 | cli |
 | `.pipeline/desktop-web/` | Web 上传、下载、任务索引 `tasks/tasks.json`、配置临时文件 | desktop-web |
 
-各目录的默认值见[使用指南 §7](user-guide.md#7-数据与缓存目录)；相对路径按进程当前目录解析（见 §9）。
+各目录的默认值见[使用指南 §7](user-guide.md#7-数据与缓存目录)；相对路径按配置文件所在目录解析（§3.2）。
 
 ### 8.2 Vault 产物
 
@@ -239,22 +241,16 @@ flowchart LR
 
 **Web `LocalTask`**（`tasks.json` 数组元素）：`id`、`fileName`、`pdfPath`、`status`（`queued | running | completed | failed`）、`progress`（0–100）、时间字段、`error`、`result`、`steps`（`[{ step, status, message, updatedAt }]`）、`logs`。
 
-**`ImportPdfResult`**：`sourceHash`、`slug`、`originalNotePath`、`translatedNotePath`、`indexNotePath`、`databaseNotePath?`、`configSummary`（MinerU 模式与后端、是否翻译、翻译服务与模型、是否生成阅读材料）。
+**`ImportPdfResult`**：`sourceHash`、`slug`、`originalNotePath`、`translatedNotePath`、`indexNotePath`、`databaseNotePath?`、`qualityStatus?`（`completed | needs_review`）、`qualityWarningCount?`、`configSummary`（MinerU 模式与后端、是否翻译、翻译服务与模型、是否生成阅读材料）。
 
 ## 9. 已知问题与文档代码差异
 
-以下是编写本文档时核对代码发现的差异，按现状记录；修复时改写对应条目。
+本节记录核对代码时发现、尚未改变的限制与差异；修复后改写或删除对应条目。
 
 | # | 现象 | 代码位置 |
 | --- | --- | --- |
-| 1 | `pnpm dev:cli` 与 `pnpm dev:oss` 通过 `pnpm --filter` 在 `apps/cli`、`apps/desktop-web` 目录中运行。命令行的默认 `--config`、PDF 相对路径，以及两端配置中的相对目录（`.pipeline/...`）都按该子目录解析，而 Web 的上传与任务索引在 workspace 根目录的 `.pipeline/`。README 中 `pnpm dev:cli import paper.pdf` 只有在使用绝对路径时才可靠 | `apps/cli/src/cli/main.ts`、`apps/desktop-web/lib/paths.ts` |
-| 2 | 命令行 `import` 先对输入调用 `resolve()` 再判断类型，裸 arXiv ID（如 `2401.12345`）、DOI 会被当成本地路径；`https://` URL 不受影响 | `apps/cli/src/cli/main.ts` |
-| 3 | README 写任务索引在 `.pipeline/tasks`；Web 实际写 `.pipeline/desktop-web/tasks/tasks.json`，`.pipeline/tasks` 只是命令行 `tasks.stateDir` 的默认值。两端任务互不可见 | `lib/local-tasks.ts`、`packages/tasks` |
-| 4 | 缓存目录默认值：代码为 `.pipeline/core-cache`（翻译、在线元数据）与 `.pipeline/core-assets-cache`（阅读材料）；模板与 README 为 `translation-cache`、`metadata-cache`、`reading-assets-cache` | `load-config.ts`、`pdf2obsidian.config.example.yaml` |
-| 5 | `metadata.online.enabled`、`easyScholar.enabled` 代码默认 `false`，模板中为 `true` | 同上 |
-| 6 | README 称 `*.original.md`「仅在需要保留原文时生成」；当前流水线总是生成 | `import-pdf.ts`、`export-notes.ts` |
-| 7 | README 称 `mode: local` 为「连接本地服务」；代码还有 `cli` 模式，且 `local` 不带 `apiUrl` 时走 CLI 并要求 `MINERU_MANAGED_API_URL` | `mineru-runner.ts` |
-| 8 | 两篇 PDF 首个标题生成相同 `slug` 时，后导入的会清空并覆盖前一篇的论文目录 | `import-pdf.ts`（normalize） |
-| 9 | Web 任务执行中进程退出，`tasks.json` 中该任务保持 `running`，界面上不能删除或重试 | `lib/local-tasks.ts` |
-| 10 | 续跑时元数据补全、自动双链、阅读材料仍会重新执行（依赖缓存避免重复调用）；`report.json` 的 `needs_review` 不反映到任务状态 | `import-pdf.ts` |
-| 11 | 阅读材料的模型调用重试用尽后抛错，整个导入失败；由于它不是命名阶段，命令行任务把失败记在 `translate` 阶段。代码注释的意图是阅读材料失败不阻断正文导出 | `generate-reading-assets.ts`、`import-pdf.ts` |
+| 1 | 命令行与 Web 各有一套任务记录，互不可见；Web 任务不按内容哈希复用，也没有并发上限 | `packages/tasks`、`apps/desktop-web/lib/local-tasks.ts` |
+| 2 | 重新导入同一篇论文会先清空论文目录，目录内用户自己添加的文件会被删除 | `import-pdf.ts`（normalize） |
+| 3 | 续跑时元数据补全、自动双链、阅读材料仍会重新执行（依赖各自缓存避免重复调用） | `import-pdf.ts` |
+| 4 | MinerU Token 除环境变量外，还从**进程工作目录**下的 `.env.local`、`.env` 读取，而不是配置文件目录；Web 端由 Next.js 自动加载 `apps/desktop-web/.env*` 到环境变量 | `mineru-runner.ts` |
+| 5 | 不经 pnpm / npm 直接运行编译后的命令行（`node apps/cli/dist/...`）时没有 `INIT_CWD`，命令参数按进程工作目录解析 | `apps/cli/src/cli/main.ts` |
