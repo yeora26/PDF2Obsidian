@@ -163,7 +163,7 @@ Between `translate` and `obsidian_export`, enrichment steps that are not named s
 
 | Path | Component | Content |
 | --- | --- | --- |
-| `/` | `LocalWorkspace` | Left: upload PDF, import by link (arXiv / DOI / URL), task list (all / running / done / failed), delete and retry. Middle: original PDF preview. Right: translation, reading assets (summary / glossary / Q&A), paper info, Bases |
+| `/` | `LocalWorkspace` | Left: upload PDF, import by link (arXiv / DOI / URL), task list (filtered by all / running / done / failed, each item shows per-stage status), delete and retry. Middle: original PDF preview, or a setup guide when the config is invalid. Right: translation, reading assets (summary / glossary / Q&A), paper info, Bases |
 | `/` dialog | `OnboardingWizard` | First-run wizard: location → parsing → AI → output. Opens automatically when config is missing or invalid and the user has not completed or dismissed it (kept in browser `localStorage`) |
 | `/settings` | `SettingsWorkspace` | Advanced settings: form for the whole config |
 

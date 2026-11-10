@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { OnboardingWizard, type OnboardingConfigResponse } from './OnboardingWizard';
+import { AlertIcon, FileTextIcon, LogoIcon, RefreshIcon, SettingsIcon, UploadIcon, WandIcon } from './shared/icons';
 
 type TaskStatus = 'queued' | 'running' | 'completed' | 'failed';
 type StepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 type ArtifactKind = 'original' | 'translated' | 'index' | 'database' | 'summary' | 'terms' | 'qa';
 type OutputViewKind = 'translated' | 'reading' | 'metadata' | 'database';
 type ReadingKind = 'summary' | 'terms' | 'qa';
+type TaskFilter = 'all' | 'active' | 'completed' | 'failed';
 
 type ConfigResponse = OnboardingConfigResponse;
 
@@ -75,6 +77,13 @@ const outputViews: Array<{ kind: OutputViewKind; label: string; source: Artifact
   { kind: 'database', label: 'Bases', source: 'database' }
 ];
 
+const taskFilters: Array<{ kind: TaskFilter; label: string }> = [
+  { kind: 'all', label: '全部' },
+  { kind: 'active', label: '处理中' },
+  { kind: 'completed', label: '完成' },
+  { kind: 'failed', label: '失败' }
+];
+
 const readingViews: Array<{ kind: ReadingKind; label: string; desc: string }> = [
   { kind: 'summary', label: '摘要', desc: '核心观点' },
   { kind: 'terms', label: '术语表', desc: '关键概念' },
@@ -94,6 +103,7 @@ export function LocalWorkspace() {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [urlBusy, setUrlBusy] = useState(false);
+  const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
 
   const selectedTask = useMemo(() => {
     return tasks.find((task) => task.id === selectedTaskId) ?? tasks[0];
@@ -261,6 +271,12 @@ export function LocalWorkspace() {
 
   const hasOutput = selectedTaskHasOutput;
   const taskSummary = getTaskSummary(tasks);
+  const filteredTasks = tasks.filter((task) => matchesTaskFilter(task, taskFilter));
+  const configMissing = Boolean(config && !config.valid);
+  const openOnboarding = () => {
+    window.localStorage.removeItem('pdf2obsidian.onboarding.dismissed');
+    setOnboardingOpen(true);
+  };
   const activeStep = selectedTask?.steps.find((step) => step.status === 'running')
     ?? selectedTask?.steps.find((step) => step.status === 'failed')
     ?? selectedTask?.steps.find((step) => step.status === 'pending');
@@ -272,22 +288,26 @@ export function LocalWorkspace() {
     <main className="app-shell" data-with-output={hasOutput ? 'true' : 'false'}>
       <aside className="left-rail">
         <div className="rail-header">
-          <div>
-            <p className="eyebrow">PDF2Obsidian</p>
-            <h1>论文处理工作台</h1>
+          <div className="brand">
+            <span className="brand-mark"><LogoIcon /></span>
+            <div>
+              <h1>PDF2Obsidian</h1>
+              <p>论文处理工作台</p>
+            </div>
           </div>
           <div className="rail-actions">
-            <button className="icon-link" type="button" onClick={() => {
-              window.localStorage.removeItem('pdf2obsidian.onboarding.dismissed');
-              setOnboardingOpen(true);
-            }}>向导</button>
-            <a className="icon-link" href="/settings" title="设置">设置</a>
+            <button aria-label="打开首次启动向导" className="icon-button" title="首次启动向导" type="button" onClick={openOnboarding}>
+              <WandIcon />
+            </button>
+            <a aria-label="设置" className="icon-button" href="/settings" title="设置">
+              <SettingsIcon />
+            </a>
           </div>
         </div>
 
         <div className="upload-zone">
           <label className="upload-card">
-            <span className="upload-icon">↑</span>
+            <span className="upload-icon"><UploadIcon /></span>
             <div className="upload-text">
               <strong>{busy ? '上传中...' : config?.valid ? '上传或拖入 PDF' : '先完成设置'}</strong>
               <span>{message || (config?.valid ? '选择文件后立即进入处理队列' : '设置 Vault 与解析服务后即可上传')}</span>
@@ -336,45 +356,33 @@ export function LocalWorkspace() {
           </div>
         </div>
 
-        {!config?.valid ? (
-          <div className="setup-warning">
-            <strong>配置未完成</strong>
-            {config?.error ? <small>{config.error}</small> : <small>完成首次启动向导后即可上传 PDF。</small>}
-            <div className="setup-actions">
-              <button type="button" onClick={() => setOnboardingOpen(true)}>打开向导</button>
-              <a href="/settings">高级设置</a>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="task-summary">
-          <div>
-            <strong>{taskSummary.total}</strong>
-            <span>全部</span>
-          </div>
-          <div>
-            <strong>{taskSummary.running}</strong>
-            <span>处理中</span>
-          </div>
-          <div>
-            <strong>{taskSummary.completed}</strong>
-            <span>完成</span>
-          </div>
-          <div>
-            <strong>{taskSummary.failed}</strong>
-            <span>失败</span>
-          </div>
-        </div>
-
         <div className="rail-section-title">
           <span>任务</span>
-          <button type="button" onClick={() => void refreshTasks()}>刷新</button>
+          <button aria-label="刷新任务列表" className="icon-button small" title="刷新" type="button" onClick={() => void refreshTasks()}>
+            <RefreshIcon />
+          </button>
+        </div>
+        <div aria-label="按状态筛选任务" className="task-filter" role="tablist">
+          {taskFilters.map((filter) => (
+            <button
+              aria-selected={taskFilter === filter.kind}
+              data-active={taskFilter === filter.kind ? 'true' : 'false'}
+              key={filter.kind}
+              role="tab"
+              type="button"
+              onClick={() => setTaskFilter(filter.kind)}
+            >
+              {filter.label}
+              <span>{taskSummary[filter.kind]}</span>
+            </button>
+          ))}
         </div>
         {actionMessage ? <p className="rail-message">{actionMessage}</p> : null}
 
         <div className="task-list">
-          {tasks.length === 0 ? <p className="empty">暂无解析任务</p> : null}
-          {tasks.map((task) => (
+          {tasks.length === 0 ? <p className="empty">还没有任务，导入一篇论文开始吧</p> : null}
+          {tasks.length > 0 && filteredTasks.length === 0 ? <p className="empty">没有符合筛选条件的任务</p> : null}
+          {filteredTasks.map((task) => (
             <div
               className="task-item"
               data-active={selectedTask?.id === task.id ? 'true' : 'false'}
@@ -387,11 +395,11 @@ export function LocalWorkspace() {
                 onClick={() => setSelectedTaskId(task.id)}
               >
                 <div className="task-title-row">
-                  <span>{task.fileName}</span>
-                  <strong>{formatStatus(task.status)}</strong>
+                  <span title={task.fileName}>{task.fileName}</span>
+                  <strong className="task-status" data-status={task.status}>{formatStatus(task.status)}</strong>
                 </div>
+                {task.status !== 'completed' && task.steps.length > 0 ? <StepTrack steps={task.steps} /> : null}
                 <p className="task-meta">{getTaskHint(task)}</p>
-                <div className="mini-progress"><span style={{ width: `${task.progress}%` }} /></div>
                 {task.error ? <p className="task-error">{task.error}</p> : null}
               </button>
               {canRetryTask(task) || canDeleteTask(task) ? (
@@ -418,14 +426,37 @@ export function LocalWorkspace() {
           title="原文件"
           subtitle={selectedTask?.fileName ?? '选择或上传 PDF'}
         />
+        {configMissing && selectedTask ? (
+          <div className="setup-banner">
+            <AlertIcon />
+            <span>配置未完成，暂时不能导入新论文。</span>
+            <button type="button" onClick={openOnboarding}>打开向导</button>
+          </div>
+        ) : null}
         {selectedTask ? (
           <div className="pdf-viewer">
             <iframe className="pdf-frame" src={getPdfPreviewSrc(selectedTask.id)} title={selectedTask.fileName} />
           </div>
+        ) : configMissing ? (
+          <div className="empty-pane">
+            <span className="empty-icon" data-tone="warn"><AlertIcon /></span>
+            <strong>还差一步：完成本地配置</strong>
+            <span>{config?.error ?? '设置 Obsidian Vault 位置和 PDF 解析服务后，就可以开始导入论文。'}</span>
+            <div className="empty-actions">
+              <button className="button-primary" type="button" onClick={openOnboarding}>打开向导</button>
+              <a className="button-secondary" href="/settings">高级设置</a>
+            </div>
+          </div>
         ) : (
           <div className="empty-pane">
-            <strong>从左侧上传一篇 PDF</strong>
-            <span>上传后会在这里预览原文件，并在右侧显示生成结果。</span>
+            <span className="empty-icon"><FileTextIcon /></span>
+            <strong>从左侧导入第一篇论文</strong>
+            <span>上传 PDF，或粘贴 arXiv ID、DOI、PDF 链接。原文会在这里预览，译文和阅读材料显示在右侧。</span>
+            <ol className="empty-steps">
+              <li><b>1</b>导入 PDF</li>
+              <li><b>2</b>解析与翻译</li>
+              <li><b>3</b>写入 Obsidian</li>
+            </ol>
           </div>
         )}
       </section>
@@ -436,10 +467,13 @@ export function LocalWorkspace() {
             {selectedTask ? <CompactStatus task={selectedTask} text={currentStatusText} /> : null}
           </PaneHeader>
           <div className="artifact-tabs">
+            <div className="segmented" role="tablist">
             {visibleOutputViews.map((item) => (
               <button
                 aria-label={`查看${item.label}`}
+                aria-selected={activeView === item.kind}
                 className="tab-button"
+                role="tab"
                 data-active={activeView === item.kind ? 'true' : 'false'}
                 key={item.kind}
                 type="button"
@@ -448,6 +482,7 @@ export function LocalWorkspace() {
                 {item.label}
               </button>
             ))}
+            </div>
           </div>
           {artifact?.error ? <p className="error-text">{artifact.error}</p> : null}
           <OutputContent
@@ -469,6 +504,20 @@ export function LocalWorkspace() {
         }}
       />
     </main>
+  );
+}
+
+function StepTrack({ steps }: { steps: LocalTaskStep[] }) {
+  return (
+    <div className="step-track" aria-label="处理阶段">
+      {steps.map((step) => (
+        <span
+          data-status={step.status}
+          key={step.step}
+          title={`${stepLabels[step.step] ?? step.step}：${formatStepStatus(step.status)}`}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -842,13 +891,19 @@ function getTaskCapabilities(task: LocalTask): string[] {
   return capabilities;
 }
 
-function getTaskSummary(tasks: LocalTask[]) {
+function getTaskSummary(tasks: LocalTask[]): Record<TaskFilter, number> {
   return {
-    total: tasks.length,
-    running: tasks.filter((task) => task.status === 'queued' || task.status === 'running').length,
+    all: tasks.length,
+    active: tasks.filter((task) => task.status === 'queued' || task.status === 'running').length,
     completed: tasks.filter((task) => task.status === 'completed').length,
     failed: tasks.filter((task) => task.status === 'failed').length
   };
+}
+
+function matchesTaskFilter(task: LocalTask, filter: TaskFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'active') return task.status === 'queued' || task.status === 'running';
+  return task.status === filter;
 }
 
 function canRetryTask(task: LocalTask): boolean {
@@ -860,8 +915,10 @@ function canDeleteTask(task: LocalTask): boolean {
 }
 
 function getTaskHint(task: LocalTask): string {
-  if (task.error) {
-    return task.error;
+  const time = task.updatedAt ? ` · ${formatRelativeTime(task.updatedAt)}` : '';
+  if (task.status === 'failed') {
+    const failedStep = task.steps.find((step) => step.status === 'failed');
+    return `${failedStep ? `失败于${stepLabels[failedStep.step] ?? failedStep.step}` : '处理失败'}${time}`;
   }
   if (task.status === 'completed') {
     return task.result?.qualityStatus === 'needs_review'
@@ -871,7 +928,7 @@ function getTaskHint(task: LocalTask): string {
   const activeStep = task.steps.find((step) => step.status === 'running')
     ?? task.steps.find((step) => step.status === 'pending');
   const stepText = activeStep ? stepLabels[activeStep.step] ?? activeStep.step : formatStatus(task.status);
-  return `${stepText} · ${formatPercent(task.progress)}${task.updatedAt ? ` · ${formatRelativeTime(task.updatedAt)}` : ''}`;
+  return `${stepText} · ${formatPercent(task.progress)}${time}`;
 }
 
 function formatPercent(value: number): string {
