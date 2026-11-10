@@ -5,6 +5,7 @@
 ## Stack and layout
 
 - Next.js 15 App Router, React 19, plain CSS (`app/globals.css`), no UI library, no client state library.
+- Styling uses the design tokens at the top of `globals.css` (`--bg`, `--surface`, `--text-*`, `--accent*`, `--warn*`, `--danger*`, `--success*`, `--radius-*`, `--shadow-*`, `--ring`), with dark values under `prefers-color-scheme: dark`. Component rules reference tokens only; never hard-code a color, font size or radius.
 - Pages: `/` → `LocalWorkspace` (task list, upload / link import, PDF preview, result tabs 译文 / 阅读材料 / 论文信息 / Bases), `/settings` → `SettingsWorkspace`. `OnboardingWizard` (steps 位置 / 解析 / AI / 输出) opens from `/` when config is missing or invalid.
 - API routes (all `runtime = 'nodejs'`): `GET/POST /api/config`, `GET/POST /api/tasks`, `GET/POST/DELETE /api/tasks/[id]`, `GET /api/tasks/[id]/pdf`, `GET /api/tasks/[id]/artifact?kind=`. Contract: [系统设计 §7](../zh/system-design.md#7-接口契约).
 - Dev server: `pnpm dev:oss` (port 3000 pinned in `package.json`). In the Claude preview use `.claude/launch.json` → `desktop-web`.
