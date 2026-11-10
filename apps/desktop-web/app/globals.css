@@ -17,13 +17,13 @@
   --text-muted: #64748b;
   --text-faint: #94a3b8;
 
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-text: #3730a3;
-  --accent-soft: #eef2ff;
-  --accent-soft-strong: #e0e7ff;
-  --accent-subtle: #f7f8ff;
-  --accent-border: #c7d2fe;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-text: #1e40af;
+  --accent-soft: #eff6ff;
+  --accent-soft-strong: #dbeafe;
+  --accent-subtle: #f5f9ff;
+  --accent-border: #bfdbfe;
   --on-accent: #ffffff;
 
   --warn: #f59e0b;
@@ -38,10 +38,10 @@
   --success-border: #bbf7d0;
   --success-text: #15803d;
 
-  --ring: 0 0 0 3px rgba(79, 70, 229, 0.16);
+  --ring: 0 0 0 3px rgba(37, 99, 235, 0.16);
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
   --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-accent: 0 1px 3px rgba(79, 70, 229, 0.3);
+  --shadow-accent: 0 1px 3px rgba(37, 99, 235, 0.3);
   --shadow-md: 0 12px 32px rgba(15, 23, 42, 0.1);
   --shadow-lg: 0 24px 80px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(15, 23, 42, 0.04);
 
@@ -86,13 +86,13 @@
     --text-muted: #8b949e;
     --text-faint: #6e7681;
 
-    --accent: #818cf8;
-    --accent-hover: #a5b4fc;
-    --accent-text: #c7d2fe;
-    --accent-soft: rgba(129, 140, 248, 0.14);
-    --accent-soft-strong: rgba(129, 140, 248, 0.22);
-    --accent-subtle: rgba(129, 140, 248, 0.08);
-    --accent-border: rgba(129, 140, 248, 0.45);
+    --accent: #60a5fa;
+    --accent-hover: #93c5fd;
+    --accent-text: #bfdbfe;
+    --accent-soft: rgba(96, 165, 250, 0.14);
+    --accent-soft-strong: rgba(96, 165, 250, 0.22);
+    --accent-subtle: rgba(96, 165, 250, 0.08);
+    --accent-border: rgba(96, 165, 250, 0.45);
     --on-accent: #0d1117;
 
     --warn-soft: rgba(245, 158, 11, 0.12);
@@ -105,7 +105,7 @@
     --success-border: rgba(34, 197, 94, 0.35);
     --success-text: #4ade80;
 
-    --ring: 0 0 0 3px rgba(129, 140, 248, 0.3);
+    --ring: 0 0 0 3px rgba(96, 165, 250, 0.3);
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
     --shadow-accent: 0 1px 3px rgba(0, 0, 0, 0.4);

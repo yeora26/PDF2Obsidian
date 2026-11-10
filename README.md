@@ -1,22 +1,69 @@
+<div align="center">
+
 # PDF2Obsidian
+
+**把论文 PDF 变成 Obsidian 里可读、可检索、可链接的中文笔记。**
+
+本地优先 · 解析 + 翻译 + 阅读材料 + 元数据 + 双链，一次完成
+
+![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A520-339933?logo=node.js&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-10.x-F69220?logo=pnpm&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue)
+
+[快速开始](#快速开始) · [界面预览](#界面预览) · [工作原理](#工作原理) · [配置说明](#配置说明) · [文档](#文档)
+
+</div>
+
+![PDF2Obsidian 本地 Web 工作台：左侧任务列表，中间原文 PDF，右侧中文译文](docs/images/workbench-translation.jpg)
 
 PDF2Obsidian 是一个 local-first 的开源论文处理工具，用于把 PDF 转换为适合 Obsidian 阅读、检索和沉淀的 Markdown 知识库内容。
 
 它面向个人研究、论文精读、技术调研和知识管理场景，核心流程包括 PDF 解析、Markdown 规范化、论文元数据补全、全文翻译、阅读材料生成、自动双链、质量检查和 Obsidian 导出。
 
+```mermaid
+flowchart LR
+    A["📄 论文 PDF<br/>上传 / 拖入 / arXiv / DOI"] --> B["PDF2Obsidian<br/>本地 Web 或 CLI"]
+    B --> C["🔍 MinerU<br/>版面解析"]
+    B --> D["🤖 AI 服务<br/>DeepSeek / OpenAI 兼容 / Ollama"]
+    B --> E["🌐 CrossRef / OpenAlex<br/>元数据补全"]
+    B --> F["🗂️ Obsidian Vault<br/>译文 · 原文 · 索引页 · 阅读材料 · Bases"]
+```
+
 ## 特性
 
-- PDF 导入：支持单篇、批量和目录监听导入。
-- MinerU 解析：支持本地服务、远程服务或官方 API 模式。
-- Markdown 规范化：保留标题、段落、图片、表格、代码块和公式结构。
-- 中文译文：支持 DeepSeek 和 Ollama Provider，可配置模型、Base URL、重试和缓存。
-- 阅读材料：自动生成摘要、术语表和问答，方便精读和复习。
-- 元数据补全：支持从正文抽取论文信息，并可通过 CrossRef、OpenAlex 补全。
-- Obsidian 导出：生成译文、索引页、阅读材料、图片资源和 Bases 数据库。
-- 自动双链：扫描已有 Vault 内容，为正文中的概念建立 WikiLink。
-- 质量报告：输出导入质量、缺失图片、元数据和阅读材料检查结果。
-- 本地 Web 工作台：提供配置、上传、PDF 预览、任务进度和结果预览界面。
-- CLI 工作流：适合脚本化处理、批量导入和长期监听 inbox 目录。
+| | 能力 | 说明 |
+| --- | --- | --- |
+| 📥 | PDF 导入 | 单篇、批量、目录监听；Web 端支持多选、拖到窗口任意位置，或粘贴 arXiv ID / DOI / PDF 链接 |
+| 🔍 | MinerU 解析 | 本地服务、远程服务或官方 API 三种模式，保留标题、段落、图片、表格、代码块和公式 |
+| 🌏 | 中文译文 | DeepSeek、Cloudflare、OpenAI、OpenRouter 等 OpenAI 兼容服务或本地 Ollama，带重试和缓存 |
+| 📝 | 阅读材料 | 自动生成摘要、术语表和问答，方便精读和复习 |
+| 🏷️ | 元数据补全 | 从正文抽取论文信息，可通过 CrossRef、OpenAlex、EasyScholar 补全期刊与分区 |
+| 🔗 | 自动双链 | 扫描已有 Vault 内容，为正文中的概念建立 WikiLink |
+| 🗃️ | Obsidian 导出 | 译文、原文、索引页、图片资源和 Bases 数据库 |
+| ✅ | 质量报告 | 检查缺失图片、元数据和阅读材料，写入 `report.json` |
+| 🖥️ | 本地 Web 工作台 | 配置向导、任务队列、PDF 预览与结果预览，支持暗色模式和快捷键 |
+| ⌨️ | CLI 工作流 | 适合脚本化处理、批量导入和长期监听 inbox 目录 |
+
+## 界面预览
+
+> 截图使用虚构的示例论文和任务数据。
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/workbench-reading.jpg" alt="阅读材料：摘要、术语表、问答"><br><sub><b>阅读材料</b>：摘要 / 术语表 / 问答，一键切换</sub></td>
+    <td width="50%"><img src="docs/images/workbench-metadata.jpg" alt="论文信息"><br><sub><b>论文信息</b>：标题、作者、DOI、来源与关键词</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/workbench-dark.jpg" alt="暗色模式"><br><sub><b>暗色模式</b>：跟随系统自动切换</sub></td>
+    <td><img src="docs/images/drag-and-drop.jpg" alt="拖入导入"><br><sub><b>拖入导入</b>：把 PDF 拖到窗口任意位置，可一次多个</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/onboarding.jpg" alt="首次启动向导"><br><sub><b>首次启动向导</b>：位置 → 解析 → AI → 输出四步完成配置</sub></td>
+    <td><img src="docs/images/settings.jpg" alt="本地设置"><br><sub><b>本地设置</b>：按处理能力一键切换功能组合</sub></td>
+  </tr>
+</table>
 
 ## 系统要求
 
@@ -30,48 +77,40 @@ PDF2Obsidian 是一个 local-first 的开源论文处理工具，用于把 PDF �
 
 ## 快速开始
 
-安装依赖：
+**1. 安装依赖**
 
 ```bash
 pnpm install
 ```
 
-复制配置模板：
+**2. 复制配置模板**
 
 ```bash
 cp pdf2obsidian.config.example.yaml pdf2obsidian.config.yaml
 ```
 
-编辑配置：
+**3. 编辑配置**（至少填写 Vault 路径；也可以跳过这步，启动 Web 后用首次启动向导填写）
 
 ```yaml
 vault:
-  # Mac
+  # macOS 示例；Windows 写成 C:\Users\your-name\Documents\Obsidian Vault
   path: /Users/your-name/Documents/Obsidian Vault
-  # windows
-  path: C:\Users\your-name\Documents\Obsidian Vault
-  # 二级目录
+  # Vault 内存放论文的目录
   documentDir: Thesis
   # 图片资源目录名
   imageDirName: images
 ```
 
-运行单篇导入：
-
-```bash
-pnpm dev:cli import paper.pdf
-```
-
-启动本地 Web 工作台：
+**4. 启动本地 Web 工作台**，打开 <http://localhost:3000>
 
 ```bash
 pnpm dev:oss
 ```
 
-默认地址：
+**或者用命令行导入单篇论文**
 
-```text
-http://localhost:3000
+```bash
+pnpm dev:cli import paper.pdf
 ```
 
 ## 本地 Web 工作台
@@ -82,26 +121,21 @@ http://localhost:3000
 PDF2OBSIDIAN_CONFIG=/path/to/pdf2obsidian.config.yaml pnpm dev:oss
 ```
 
-主要能力：
+页面分为三栏：
 
-- 可视化配置 Vault、MinerU、AI 服务和输出增强。
-- 上传或拖入 PDF。
-- 左侧查看任务列表、状态和删除操作。
-- 中间预览原 PDF。
-- 右侧查看译文、阅读材料、论文信息、Obsidian 文件和 Bases 内容。
-- 自动保存本地任务记录。
+| 左栏 | 中栏 | 右栏 |
+| --- | --- | --- |
+| 上传 / 拖入 / 链接导入，任务列表按 全部 · 处理中 · 完成 · 失败 筛选，每个任务显示各阶段进度，失败可重试 | 原 PDF 预览；配置未完成时显示配置引导 | 译文、阅读材料（摘要 / 术语表 / 问答）、论文信息、Bases |
 
-本地 Web 的上传文件默认放在：
+快捷键：
 
-```text
-.pipeline/desktop-web/uploads
-```
+| 按键 | 作用 |
+| --- | --- |
+| `/` | 聚焦链接输入框 |
+| `↑` / `↓` | 在当前筛选的任务之间切换 |
+| `Esc` | 退出输入框 |
 
-任务索引默认放在（与 CLI 的任务记录相互独立）：
-
-```text
-.pipeline/desktop-web/tasks/tasks.json
-```
+本地 Web 的上传文件默认放在 `.pipeline/desktop-web/uploads`，任务索引放在 `.pipeline/desktop-web/tasks/tasks.json`（与 CLI 的任务记录相互独立）。
 
 ## CLI 用法
 
@@ -345,26 +379,44 @@ obsidian:
 
 `database` 会生成 Obsidian Bases 数据库文件。
 
-## 处理流水线
+## 工作原理
 
-每篇 PDF 会经过以下阶段：
+### 处理流水线
 
-```text
-upload -> mineru -> normalize -> translate -> obsidian_export -> quality_check
+每篇 PDF 依次经过六个阶段，Web 任务卡片上的进度条就对应这六段：
+
+```mermaid
+flowchart LR
+    U["upload<br/>读取论文"] --> M["mineru<br/>提取内容"] --> N["normalize<br/>整理结构"] --> T["translate<br/>生成译文"] --> O["obsidian_export<br/>写入笔记"] --> Q["quality_check<br/>质量检查"]
+    O -.-> MD[("元数据补全<br/>CrossRef / OpenAlex")]
+    O -.-> RA[("阅读材料<br/>摘要 · 术语表 · 问答")]
+    O -.-> AL[("自动双链<br/>Bases 数据库")]
 ```
-
-含义：
 
 - `upload`：读取输入 PDF，计算文件哈希。
 - `mineru`：调用 MinerU 解析 PDF。
 - `normalize`：整理 Markdown、图片路径和论文基础信息。
-- `translate`：按块翻译正文，或在中文文档/关闭翻译时跳过。
+- `translate`：按块翻译正文，或在中文文档 / 关闭翻译时跳过。
 - `obsidian_export`：写入 Vault，生成索引和相关 Markdown 文件。
 - `quality_check`：检查产物质量并写出报告。
+
+元数据补全、自动双链和阅读材料在译文生成后、写入笔记前完成。翻译、阅读材料和在线元数据都有本地缓存；任务失败后重试会跳过已完成的阶段，其余步骤依靠缓存避免重复调用付费接口。
 
 ## 输出产物
 
 一次成功导入通常会生成：
+
+```mermaid
+flowchart TB
+    V["&lt;vault&gt;/&lt;documentDir&gt;/"] --> P["&lt;paper-slug&gt;/"]
+    V --> DB["数据库.base<br/>Bases 数据库"]
+    P --> I["*.index.md<br/>索引页：元信息 · PDF 链接 · 阅读材料"]
+    P --> Z["*.zh.md<br/>中文译文"]
+    P --> OR["*.original.md<br/>原文"]
+    P --> R["摘要.md · 术语表.md · 问答.md"]
+    P --> IMG["images/"]
+    P --> REP["report.json<br/>质量报告"]
+```
 
 ```text
 <vault>/<documentDir>/<paper-slug>/
@@ -396,6 +448,26 @@ upload -> mineru -> normalize -> translate -> obsidian_export -> quality_check
 - `images/`：从 PDF 中提取并改写链接后的图片资源。
 
 ## Monorepo 结构
+
+```mermaid
+flowchart TB
+    subgraph apps
+        CLI["apps/cli<br/>命令行入口"]
+        WEB["apps/desktop-web<br/>本地 Web 工作台（Next.js）"]
+    end
+    subgraph packages
+        PIPE["pipeline<br/>importPdf 主流水线"]
+        TASKS["tasks<br/>任务状态 · 批量 · 监听 · 重试"]
+        CORE["core<br/>配置 · Markdown · 元数据 · Obsidian · 质量报告 · 阅读材料"]
+        PROV["providers<br/>OpenAI 兼容 · Ollama"]
+    end
+    CLI --> TASKS --> PIPE
+    CLI --> PIPE
+    WEB --> PIPE
+    TASKS --> CORE
+    PIPE --> CORE
+    CORE --> PROV
+```
 
 ```text
 apps/
