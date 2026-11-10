@@ -509,6 +509,11 @@ metadata:
 - `vault.imageDirName` 是否与产物中的图片路径一致。
 - MinerU 是否成功提取图片。
 
+## 文档
+
+- [技术文档索引](docs/zh/README.md)（[English](docs/en/README.md)）：系统设计、安装配置与使用指南、术语表、PDF 导入流水线专题。
+- 编码代理（Claude Code、Codex 等）从 [AGENTS.md](AGENTS.md) 开始阅读。
+
 ## 致谢
 
 感谢 [MinerU](https://github.com/opendatalab/MinerU) 和 [EasyScholar](https://www.easyscholar.cc/) 为本项目提供免费的 API 服务支持。
