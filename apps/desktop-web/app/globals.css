@@ -846,6 +846,7 @@ h3 {
 }
 
 .preview-pane > .pdf-viewer,
+.preview-pane > .linked-pdf-viewer,
 .preview-pane > .empty-pane {
   flex: 1;
 }
@@ -901,6 +902,134 @@ h3 {
   overflow: hidden;
   padding: 16px;
   background: var(--surface-subtle);
+}
+
+.pdf-block-toggle[aria-pressed="true"],
+.pdf-tool-group button[aria-pressed="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.linked-pdf-viewer {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.pdf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 8px 16px;
+  background: var(--surface);
+  font-size: var(--text-sm);
+}
+
+.pdf-tool-group,
+.pdf-tool-group label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.pdf-tool-group button,
+.pdf-tool-group input {
+  min-width: 30px;
+  min-height: 30px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.pdf-tool-group input {
+  width: 4ch;
+  text-align: center;
+  appearance: textfield;
+}
+
+.pdf-tool-group input::-webkit-inner-spin-button {
+  appearance: none;
+}
+
+.pdf-tool-group a {
+  padding: 4px 6px;
+  color: var(--accent-text);
+}
+
+.pdf-page-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.pdf-page-scroll[data-pan-mode="true"] {
+  cursor: grab;
+  touch-action: none;
+}
+
+.pdf-page-scroll[data-panning="true"] {
+  cursor: grabbing;
+}
+
+.pdf-page-scroll[data-pan-mode="true"] .pdf-block-box {
+  pointer-events: none;
+}
+
+.pdf-pages-stack {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+  justify-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.pdf-page-surface {
+  position: relative;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.pdf-page-surface canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-block-box {
+  position: absolute;
+  padding: 0;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pdf-block-box:hover,
+.pdf-block-box:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.pdf-block-box[data-active="true"] {
+  z-index: 1;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  box-shadow: var(--ring);
+}
+
+.pdf-layout-message,
+.pdf-page-scroll > p {
+  padding: 8px 16px;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
 }
 
 .pdf-frame {
@@ -1050,6 +1179,67 @@ h3 {
   font-size: var(--text-md);
   line-height: 1.8;
   overflow-wrap: anywhere;
+}
+
+.linked-original-block {
+  position: relative;
+  display: flow-root;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.linked-original-block[data-linked="true"] {
+  cursor: pointer;
+}
+
+.linked-original-block[data-linked="true"]:hover,
+.linked-original-block:focus-within {
+  border-color: var(--accent-border);
+}
+
+.linked-original-block[data-active="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.linked-original-block > :is(h1, h2, h3, p, ul, pre):last-child {
+  margin-bottom: 0;
+}
+
+.linked-original-block:is([data-block-type="header"], [data-block-type="footer"], [data-block-type="page_number"]) {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.linked-original-block sup {
+  font-size: var(--text-xs);
+  line-height: 0;
+}
+
+.linked-original-block > img {
+  display: block;
+  max-width: 100%;
+  margin: 8px auto;
+}
+
+.linked-original-locate {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  background: var(--surface);
+  color: var(--accent-text);
+  font-size: var(--text-sm);
+  opacity: 0;
+}
+
+.linked-original-block:hover .linked-original-locate,
+.linked-original-locate:focus-visible {
+  opacity: 1;
 }
 
 .markdown-preview h1,
@@ -1978,6 +2168,10 @@ h3 {
   .app-shell,
   .app-shell[data-with-output="true"] {
     grid-template-columns: 300px minmax(0, 1fr);
+  }
+
+  .linked-original {
+    max-height: 70vh;
   }
 
   .output-pane {

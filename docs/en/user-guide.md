@@ -159,7 +159,7 @@ Cloudflare Workers AI `baseUrl` looks like `https://api.cloudflare.com/client/v4
 1. **First run**: when config is missing or invalid, the wizard opens and walks through Vault location, PDF parsing, AI service and output options. Reopen it with 向导 (wizard) at the top, or edit everything under 设置 (settings).
 2. **Import**: drop or choose a PDF, or enter an arXiv id, DOI or PDF URL under 从链接导入 (import from link). Each task starts immediately.
 3. **Progress**: the task list on the left shows status and stages; failed tasks show a Chinese reason and suggestions.
-4. **Results**: the original PDF is previewed in the middle; switch between translation, reading assets, paper info and Bases on the right.
+4. **Results**: preview the original PDF in the middle, and switch among original text, translation, reading assets, paper info and Bases on the right. When the MinerU output includes block coordinates, choose **区块** (Blocks) above the PDF. Select a box to highlight its original text, or select the text to return to its PDF location. Tasks without coordinates use the standard PDF preview.
 5. **Review**: tasks with quality warnings show 需复核 (needs review) and the warning count; the reasons are in `report.json` in the paper folder.
 6. **Retry and delete**: failed tasks can be retried, skipping completed stages; tasks that had not finished before the web app restarted are marked failed and can be retried too. Delete removes only the task record and uploaded PDF, not the notes in the Vault.
 

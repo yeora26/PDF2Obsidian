@@ -36,6 +36,7 @@ export const importPipelineSteps = [
 
 export interface ImportPdfResult {
   sourceHash: string;
+  mineruOutputDir?: string;
   slug: string;
   originalNotePath: string;
   translatedNotePath: string;
@@ -56,6 +57,12 @@ export interface ImportPdfResult {
   } | undefined;
 }
 
+export function getMineruOutputDir(outputDir: string, pdfPath: string, sourceHash: string): string {
+  const sourceSlug = toSlug(basename(pdfPath, '.pdf'));
+  const hashSlug = sourceHash.replace(/[^a-zA-Z0-9]+/g, '-');
+  return join(outputDir, `${sourceSlug.slice(0, 15)}-${hashSlug.slice(0, 16)}`);
+}
+
 export async function importPdf(input: ImportPdfInput): Promise<ImportPdfResult> {
   const resume = input.completedSteps ?? new Set<ImportPipelineStep>();
 
@@ -71,9 +78,7 @@ export async function importPdf(input: ImportPdfInput): Promise<ImportPdfResult>
 
   const baseName = basename(input.pdfPath, '.pdf');
   const sourceSlug = toSlug(baseName);
-  const hashSlug = sourceHash.replace(/[^a-zA-Z0-9]+/g, '-');
-  const runId = `${sourceSlug.slice(0, 15)}-${hashSlug.slice(0, 16)}`;
-  const mineruOutputRoot = join(input.config.mineru.outputDir, runId);
+  const mineruOutputRoot = getMineruOutputDir(input.config.mineru.outputDir, input.pdfPath, sourceHash);
   await ensureDirectory(mineruOutputRoot);
 
   // ── mineru ────────────────────────────────────────────────────
@@ -370,6 +375,7 @@ export async function importPdf(input: ImportPdfInput): Promise<ImportPdfResult>
 
   return {
     sourceHash,
+    mineruOutputDir: mineruOutputRoot,
     slug,
     originalNotePath: exportedNotes?.originalNotePath ?? join(documentRoot, `${slug}.original.md`),
     translatedNotePath: join(documentRoot, `${slug}.zh.md`),

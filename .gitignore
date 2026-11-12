@@ -16,3 +16,5 @@ pdf2obsidian.config.yaml
 *.tsbuildinfo
 
 output/*
+
+/apps/desktop-web/public/pdf.worker.min.mjs
