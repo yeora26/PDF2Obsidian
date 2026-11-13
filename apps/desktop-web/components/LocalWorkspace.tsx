@@ -1,14 +1,21 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import dynamic from 'next/dynamic';
+import type { BlockSelection, PdfBlock } from '../lib/pdf-blocks';
 import { OnboardingWizard, type OnboardingConfigResponse } from './OnboardingWizard';
 import { AlertIcon, FileTextIcon, LogoIcon, RefreshIcon, SettingsIcon, UploadIcon, WandIcon } from './shared/icons';
+
+const LinkedPdfViewer = dynamic(() => import('./LinkedPdfViewer'), {
+  ssr: false,
+  loading: () => <p className="pdf-layout-message" role="status">正在加载区块预览…</p>
+});
 
 type TaskStatus = 'queued' | 'running' | 'completed' | 'failed';
 type StepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 type ArtifactKind = 'original' | 'translated' | 'index' | 'database' | 'summary' | 'terms' | 'qa';
-type OutputViewKind = 'translated' | 'reading' | 'metadata' | 'database';
+type OutputViewKind = 'original' | 'translated' | 'reading' | 'metadata' | 'database';
 type ReadingKind = 'summary' | 'terms' | 'qa';
 type TaskFilter = 'all' | 'active' | 'completed' | 'failed';
 type ToastTone = 'info' | 'success' | 'error';
@@ -61,6 +68,7 @@ interface LocalTask {
 }
 
 interface ArtifactState {
+  taskId: string;
   kind: ArtifactKind;
   view: OutputViewKind;
   path?: string;
@@ -78,6 +86,7 @@ const stepLabels: Record<string, string> = {
 };
 
 const outputViews: Array<{ kind: OutputViewKind; label: string; source: ArtifactKind }> = [
+  { kind: 'original', label: '原文', source: 'original' },
   { kind: 'translated', label: '译文', source: 'translated' },
   { kind: 'reading', label: '阅读材料', source: 'summary' },
   { kind: 'metadata', label: '论文信息', source: 'index' },
@@ -102,6 +111,10 @@ export function LocalWorkspace() {
   const [tasks, setTasks] = useState<LocalTask[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>();
   const [artifact, setArtifact] = useState<ArtifactState | undefined>();
+  const artifactRequest = useRef<AbortController | undefined>(undefined);
+  const [blockModeTaskId, setBlockModeTaskId] = useState<string>();
+  const [layout, setLayout] = useState<{ taskId: string; blocks?: PdfBlock[]; message?: string }>();
+  const [blockSelection, setBlockSelection] = useState<BlockSelection>();
   const [activeView, setActiveView] = useState<OutputViewKind>('translated');
   const [readingKind, setReadingKind] = useState<ReadingKind>('summary');
   const [busy, setBusy] = useState(false);
@@ -116,7 +129,12 @@ export function LocalWorkspace() {
   const selectedTask = useMemo(() => {
     return tasks.find((task) => task.id === selectedTaskId) ?? tasks[0];
   }, [selectedTaskId, tasks]);
+  const taskId = selectedTask?.id;
   const selectedTaskHasOutput = Boolean(selectedTask?.result);
+  const blockMode = Boolean(taskId && blockModeTaskId === taskId && selectedTaskHasOutput);
+  const currentLayout = layout?.taskId === taskId ? layout : undefined;
+  const linkedBlocks = blockMode ? currentLayout?.blocks : undefined;
+  const currentArtifact = artifact?.taskId === taskId && artifact?.view === activeView ? artifact : undefined;
   const translationSkipped = selectedTask?.result?.configSummary?.translationSkipped === true;
   const visibleOutputViews = useMemo(() => {
     return outputViews.filter((view) => {
@@ -158,6 +176,9 @@ export function LocalWorkspace() {
   }, []);
 
   useEffect(() => {
+    setBlockModeTaskId(undefined);
+    setLayout(undefined);
+    setBlockSelection(undefined);
     if (selectedTaskHasOutput) {
       if (translationSkipped) {
         setActiveView('reading');
@@ -169,9 +190,42 @@ export function LocalWorkspace() {
         if (selectedTask) void loadArtifact(selectedTask.id, 'translated', 'translated');
       }
     } else {
+      artifactRequest.current?.abort();
       setArtifact(undefined);
     }
-  }, [selectedTask?.id, selectedTaskHasOutput, translationSkipped]);
+    return () => artifactRequest.current?.abort();
+  }, [taskId, selectedTaskHasOutput, translationSkipped]);
+
+  const useNativePdf = useCallback(() => {
+    if (!taskId) return;
+    setBlockModeTaskId(undefined);
+    setBlockSelection(undefined);
+    setLayout({ taskId, message: '区块预览加载失败，已恢复普通 PDF 预览。' });
+  }, [taskId]);
+
+  useEffect(() => {
+    if (!blockMode || !taskId) return;
+    const controller = new AbortController();
+
+    async function loadLayout() {
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/layout`, { signal: controller.signal, cache: 'no-store' });
+        const { blocks, message } = await response.json() as { blocks: PdfBlock[]; message?: string };
+        if (controller.signal.aborted || !taskId) return;
+        if (!response.ok || blocks.length === 0) {
+          setBlockModeTaskId(undefined);
+          setLayout({ taskId, message: message ?? '此任务没有可用的区块坐标。' });
+          return;
+        }
+        setLayout({ taskId, blocks });
+      } catch {
+        if (!controller.signal.aborted) useNativePdf();
+      }
+    }
+
+    void loadLayout();
+    return () => controller.abort();
+  }, [blockMode, taskId, useNativePdf]);
 
   async function refreshConfig() {
     const response = await fetch('/api/config', { cache: 'no-store' });
@@ -252,10 +306,36 @@ export function LocalWorkspace() {
   }
 
   async function loadArtifact(taskId: string, kind: ArtifactKind, view: OutputViewKind) {
-    const response = await fetch(`/api/tasks/${taskId}/artifact?kind=${kind}`, { cache: 'no-store' });
-    const payload = await response.json() as Omit<ArtifactState, 'kind' | 'view'>;
-    setArtifact({ ...payload, kind, view });
+    artifactRequest.current?.abort();
+    const controller = new AbortController();
+    artifactRequest.current = controller;
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/artifact?kind=${kind}`, {
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      const payload = await response.json() as Omit<ArtifactState, 'taskId' | 'kind' | 'view'>;
+      if (!controller.signal.aborted) setArtifact({ ...payload, taskId, kind, view });
+    } catch {
+      if (!controller.signal.aborted) setArtifact({ taskId, kind, view, error: '读取产物失败，请重试。' });
+    }
   }
+
+  function toggleBlockMode() {
+    if (!taskId) return;
+    setLayout(undefined);
+    setBlockSelection(undefined);
+    setBlockModeTaskId(blockMode ? undefined : taskId);
+    if (!blockMode && activeView !== 'original') void selectOutputView('original');
+  }
+
+  const selectBlock = useCallback((id: string, source: BlockSelection['source']) => {
+    setBlockSelection((current) => ({ id, source, sequence: (current?.sequence ?? 0) + 1 }));
+    if (source === 'pdf' && activeView !== 'original' && taskId) {
+      setActiveView('original');
+      void loadArtifact(taskId, 'original', 'original');
+    }
+  }, [activeView, taskId]);
 
   async function selectOutputView(view: OutputViewKind) {
     if (!selectedTask) return;
@@ -358,7 +438,7 @@ export function LocalWorkspace() {
         return;
       }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        if (filteredTasks.length === 0) return;
+        if (target?.closest('.linked-pdf-viewer, .linked-original') || filteredTasks.length === 0) return;
         event.preventDefault();
         const index = filteredTasks.findIndex((task) => task.id === selectedTask?.id);
         const next = event.key === 'ArrowDown'
@@ -531,7 +611,16 @@ export function LocalWorkspace() {
         <PaneHeader
           title="原文件"
           subtitle={selectedTask?.fileName ?? '选择或上传 PDF'}
-        />
+        >
+          {hasOutput ? (
+            <button className="button-secondary pdf-block-toggle" type="button" aria-pressed={blockMode} onClick={toggleBlockMode}>
+              区块
+            </button>
+          ) : null}
+        </PaneHeader>
+        {currentLayout?.message || (blockMode && !linkedBlocks) ? (
+          <p className="pdf-layout-message" role="status">{currentLayout?.message ?? '正在读取区块坐标…'}</p>
+        ) : null}
         {configMissing && selectedTask ? (
           <div className="setup-banner">
             <AlertIcon />
@@ -539,7 +628,16 @@ export function LocalWorkspace() {
             <button type="button" onClick={openOnboarding}>打开向导</button>
           </div>
         ) : null}
-        {selectedTask ? (
+        {selectedTask && linkedBlocks ? (
+          <LinkedPdfViewer
+            key={selectedTask.id}
+            taskId={selectedTask.id}
+            blocks={linkedBlocks}
+            selection={blockSelection}
+            onSelect={selectBlock}
+            onLoadError={useNativePdf}
+          />
+        ) : selectedTask ? (
           <div className="pdf-viewer">
             <iframe className="pdf-frame" src={getPdfPreviewSrc(selectedTask.id)} title={selectedTask.fileName} />
           </div>
@@ -590,14 +688,26 @@ export function LocalWorkspace() {
             ))}
             </div>
           </div>
-          {artifact?.error ? <p className="error-text">{artifact.error}</p> : null}
-          <OutputContent
-            artifact={artifact}
-            readingKind={readingKind}
-            selectedTask={selectedTask}
-            view={activeView}
-            onReadingChange={(kind) => void selectReadingView(kind)}
-          />
+          {activeView === 'original' && linkedBlocks && taskId ? (
+            <LinkedOriginal
+              key={taskId}
+              taskId={taskId}
+              blocks={linkedBlocks}
+              selection={blockSelection}
+              onSelect={selectBlock}
+            />
+          ) : (
+            <>
+              {currentArtifact?.error ? <p className="error-text">{currentArtifact.error}</p> : null}
+              <OutputContent
+                artifact={currentArtifact}
+                readingKind={readingKind}
+                selectedTask={selectedTask}
+                view={activeView}
+                onReadingChange={(kind) => void selectReadingView(kind)}
+              />
+            </>
+          )}
         </section>
       ) : null}
       {dragActive ? (
@@ -755,6 +865,79 @@ function MetadataView({ content }: { content?: string }) {
   );
 }
 
+const LinkedOriginal = memo(function LinkedOriginal({ taskId, blocks, selection, onSelect }: {
+  taskId: string;
+  blocks: PdfBlock[];
+  selection?: BlockSelection;
+  onSelect: (id: string, source: BlockSelection['source']) => void;
+}) {
+  const viewport = useRef<HTMLElement>(null);
+  const parsed = useMemo(() => {
+    const linkedIds = new Set(blocks.filter((block) => block.bbox).map((block) => block.continuationOf ?? block.id));
+    return blocks.filter((block) => !block.continuationOf).map((block) => ({
+      ...block,
+      content: parseMarkdownBlocks(block.markdown).map((item, index) => renderMarkdownBlock(item, index, renderOriginalInline)),
+      linked: linkedIds.has(block.id)
+    }));
+  }, [blocks]);
+
+  useLayoutEffect(() => {
+    if (selection?.source !== 'pdf') return;
+    const panel = viewport.current;
+    const target = panel?.querySelector<HTMLElement>(`[data-block-id="${selection.id}"]`);
+    if (!panel || !target) return;
+    const bounds = panel.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    const offset = Math.max(12, (panel.clientHeight - rect.height) / 2);
+    panel.scrollTo({ top: panel.scrollTop + rect.top - bounds.top - offset, behavior: 'instant' });
+    const visibleBounds = target.getBoundingClientRect();
+    if (visibleBounds.bottom <= 0 || visibleBounds.top >= window.innerHeight) {
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [selection]);
+
+  return (
+    <article className="markdown-preview linked-original" ref={viewport}>
+      {parsed.map((block) => (
+        <section
+          className="linked-original-block"
+          key={block.id}
+          data-block-id={block.id}
+          data-active={selection?.id === block.id}
+          data-linked={block.linked}
+          data-block-type={block.type}
+          onClick={block.linked ? (event) => {
+            if (!(event.target as HTMLElement).closest('button') && !window.getSelection()?.toString()) {
+              onSelect(block.id, 'markdown');
+            }
+          } : undefined}
+        >
+          {block.linked ? (
+            <button
+              className="linked-original-locate"
+              type="button"
+              aria-label={`定位 PDF 第 ${block.page} 页区块`}
+              aria-pressed={selection?.id === block.id}
+              onClick={() => onSelect(block.id, 'markdown')}
+            >
+              定位 PDF
+            </button>
+          ) : null}
+          {block.image ? (
+            <img
+              src={`/api/tasks/${taskId}/layout?image=${block.id}`}
+              loading="lazy"
+              decoding="async"
+              alt="原文图表"
+            />
+          ) : null}
+          {block.content}
+        </section>
+      ))}
+    </article>
+  );
+});
+
 function MarkdownPreview({
   content,
   emptyText = '任务完成后会在这里显示生成内容。',
@@ -884,14 +1067,24 @@ function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
   return blocks;
 }
 
-function renderMarkdownBlock(block: MarkdownBlock, index: number) {
+function renderOriginalInline(text: string): ReactNode {
+  return text.split(/\$\^\{([\d, ]+)\}\$/g).map((part, index) =>
+    index % 2 === 0 ? part : <sup key={index}>{part}</sup>
+  );
+}
+
+function renderMarkdownBlock(
+  block: MarkdownBlock,
+  index: number,
+  renderInline: (text: string) => ReactNode = (text) => text
+) {
   if (block.type === 'heading') {
     const Tag = `h${block.level}` as 'h1' | 'h2' | 'h3';
-    return <Tag key={index}>{block.text}</Tag>;
+    return <Tag key={index}>{renderInline(block.text)}</Tag>;
   }
 
   if (block.type === 'list') {
-    return <ul key={index}>{block.items.map((item, itemIndex) => <li key={itemIndex}>{item}</li>)}</ul>;
+    return <ul key={index}>{block.items.map((item, itemIndex) => <li key={itemIndex}>{renderInline(item)}</li>)}</ul>;
   }
 
   if (block.type === 'code') {
@@ -899,14 +1092,14 @@ function renderMarkdownBlock(block: MarkdownBlock, index: number) {
   }
 
   if (block.type === 'quote') {
-    return <blockquote key={index}>{block.text}</blockquote>;
+    return <blockquote key={index}>{renderInline(block.text)}</blockquote>;
   }
 
   if (block.type === 'table') {
     return <pre className="md-table" key={index}>{block.text}</pre>;
   }
 
-  return <p key={index}>{block.text}</p>;
+  return <p key={index}>{renderInline(block.text)}</p>;
 }
 
 interface MetadataRow {

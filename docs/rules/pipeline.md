@@ -4,7 +4,7 @@
 
 ## Stages
 
-`importPdf({ pdfPath, config, onStep, completedSteps })` runs `upload → mineru → normalize → translate → obsidian_export → quality_check` (`importPipelineSteps`). It reports each stage through `onStep` (`running | completed | failed | skipped`) and returns `ImportPdfResult` (paths of the notes, `slug`, `sourceHash`, `qualityStatus`, `qualityWarningCount`, `configSummary`).
+`importPdf({ pdfPath, config, onStep, completedSteps })` runs `upload → mineru → normalize → translate → obsidian_export → quality_check` (`importPipelineSteps`). It reports each stage through `onStep` (`running | completed | failed | skipped`) and returns `ImportPdfResult` (paths of the notes, `mineruOutputDir`, `slug`, `sourceHash`, `qualityStatus`, `qualityWarningCount`, `configSummary`).
 
 - Stage names are a contract with `packages/tasks` (`state.yaml`), the Web task queue, and the Web progress UI labels. Adding, renaming or reordering a stage changes all of them and persisted task files.
 - Work that is not a named stage (auto-link, metadata enrichment, reading assets, reference stubs, Bases file) runs inside the stage that needs it or between stages. It runs again on every resume; keep it idempotent. It must not fail the import for an optional output: catch, record a warning for `report.json` (see reading assets, metadata), and continue.

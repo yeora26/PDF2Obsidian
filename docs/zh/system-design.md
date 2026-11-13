@@ -163,7 +163,7 @@ flowchart LR
 
 | 路径 | 组件 | 内容 |
 | --- | --- | --- |
-| `/` | `LocalWorkspace` | 左栏：上传 PDF（可多选，或拖到窗口任意位置）、按链接导入（arXiv / DOI / URL）、任务列表（按全部 / 处理中 / 完成 / 失败筛选，每项显示各阶段状态）、删除与重试；中栏：原 PDF 预览，配置无效时显示配置引导；右栏：译文、阅读材料（摘要 / 术语表 / 问答）、论文信息、Bases |
+| `/` | `LocalWorkspace` | 左栏：上传 PDF（可多选，或拖到窗口任意位置）、按链接导入（arXiv / DOI / URL）、任务列表（按全部 / 处理中 / 完成 / 失败筛选，每项显示各阶段状态）、删除与重试；中栏：原 PDF 预览，配置无效时显示配置引导；右栏：原文、译文、阅读材料（摘要 / 术语表 / 问答）、论文信息、Bases |
 | `/` 弹窗 | `OnboardingWizard` | 首次启动向导：位置 → 解析 → AI → 输出。配置不存在或无效、且用户未完成或关闭过向导时自动打开（状态记在浏览器 `localStorage`） |
 | `/settings` | `SettingsWorkspace` | 高级设置，表单编辑全部配置 |
 
@@ -186,7 +186,7 @@ flowchart LR
 
 ## 7. 接口契约
 
-本地 Web 的 API 只供本机页面使用，均在 Node.js 运行时执行，返回 JSON（PDF 接口除外）。
+本地 Web 的 API 只供本机页面使用，均在 Node.js 运行时执行，返回 JSON（PDF 和区块图片响应除外）。
 
 | 方法与路径 | 请求 | 响应 |
 | --- | --- | --- |
@@ -198,6 +198,7 @@ flowchart LR
 | `POST /api/tasks/:id` | `{ action: "retry" }` | `{ task }`；不可重试时 400 |
 | `DELETE /api/tasks/:id` | — | `{ ok: true }`；运行中时 400 |
 | `GET /api/tasks/:id/pdf` | — | 原 PDF，`Content-Type: application/pdf`，inline |
+| `GET /api/tasks/:id/layout` | 可选 `image=<区块 ID>` | 解析产物中的 `{ blocks, message? }`，或该区块的图表图片。没有坐标时返回空数组和说明 |
 | `GET /api/tasks/:id/artifact?kind=` | `kind` ∈ `original`、`translated`、`index`、`database`、`summary`、`terms`、`qa` | `{ path, content }`；未生成时 404 并附中文说明 |
 
 ## 8. 数据与存储

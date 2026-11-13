@@ -163,7 +163,7 @@ Between `translate` and `obsidian_export`, enrichment steps that are not named s
 
 | Path | Component | Content |
 | --- | --- | --- |
-| `/` | `LocalWorkspace` | Left: upload PDF (multiple files, or drop anywhere on the window), import by link (arXiv / DOI / URL), task list (filtered by all / running / done / failed, each item shows per-stage status), delete and retry. Middle: original PDF preview, or a setup guide when the config is invalid. Right: translation, reading assets (summary / glossary / Q&A), paper info, Bases |
+| `/` | `LocalWorkspace` | Left: upload PDF (multiple files, or drop anywhere on the window), import by link (arXiv / DOI / URL), task list (filtered by all / running / done / failed, each item shows per-stage status), delete and retry. Middle: original PDF preview, or a setup guide when the config is invalid. Right: original text, translation, reading assets (summary / glossary / Q&A), paper info, Bases |
 | `/` dialog | `OnboardingWizard` | First-run wizard: location → parsing → AI → output. Opens automatically when config is missing or invalid and the user has not completed or dismissed it (kept in browser `localStorage`) |
 | `/settings` | `SettingsWorkspace` | Advanced settings: form for the whole config |
 
@@ -186,7 +186,7 @@ The task list polls `/api/tasks` every 1.8 s. Shortcuts: `/` focuses the link in
 
 ## 7. API contract
 
-The web API is for the local page only. All routes run in the Node.js runtime and return JSON (except the PDF route).
+The web API is for the local page only. All routes run in the Node.js runtime and return JSON (except PDF and layout image responses).
 
 | Method and path | Request | Response |
 | --- | --- | --- |
@@ -198,6 +198,7 @@ The web API is for the local page only. All routes run in the Node.js runtime an
 | `POST /api/tasks/:id` | `{ action: "retry" }` | `{ task }`; 400 if not retryable |
 | `DELETE /api/tasks/:id` | — | `{ ok: true }`; 400 while running |
 | `GET /api/tasks/:id/pdf` | — | The original PDF, `Content-Type: application/pdf`, inline |
+| `GET /api/tasks/:id/layout` | Optional `image=<block ID>` | `{ blocks, message? }` from the parse output, or the image associated with the block. Returns an empty array and message when coordinates are unavailable |
 | `GET /api/tasks/:id/artifact?kind=` | `kind` ∈ `original`, `translated`, `index`, `database`, `summary`, `terms`, `qa` | `{ path, content }`; 404 with a Chinese explanation if not generated |
 
 ## 8. Data and storage
